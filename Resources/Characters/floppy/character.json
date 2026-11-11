@@ -1,0 +1,36 @@
+{
+  "displayName" : "Floppy",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No disks in the drive. All clear.",
+      "Drive A: is empty. Nostalgic, really.",
+      "Nothing to read. Nothing to write."
+    ],
+    "finished" : [
+      "{project}: saved! Eject safely.",
+      "{project} is done. Write-protected. Probably.",
+      "Task complete in {project}. Nice and tidy."
+    ],
+    "idle" : [
+      "{project}: idle. Defragmenting my thoughts.",
+      "{project} is quiet. Spinning down.",
+      "{project}: waiting. Like a good drive."
+    ],
+    "permission" : [
+      "{project} wants to {detail}. Remember Y/N prompts?",
+      "{project}: permission to {detail}, please. Authentic!",
+      "Insert approval: {project} needs {detail}."
+    ],
+    "question" : [
+      "{project} has a question: {detail}",
+      "{project}: {detail} Mind answering? Takes 1.44 MB.",
+      "Quick one from {project}: {detail}"
+    ],
+    "working" : [
+      "{project}: seeking sectors, running {tool}.",
+      "{project} is writing to disk. Hear the whirr?",
+      "{project}: {tool} in progress. No hot-swapping."
+    ]
+  }
+}

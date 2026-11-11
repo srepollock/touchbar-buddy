@@ -78,10 +78,6 @@ private func typing(frame: Int) -> Sprite {
     return sprite.stamped([String(repeating: "G", count: 19), "GHGHGHGHGHGHGHGHGHG"], x: 2, y: 21)
 }
 
-private func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
-    points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
-}
-
 func sparkyArt() -> CharacterArt {
     let idle: [Sprite] = [
         sparky(),

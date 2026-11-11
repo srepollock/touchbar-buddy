@@ -138,7 +138,10 @@ let sheetDir: URL? = arguments.firstIndex(of: "--sheet").flatMap { index in
 }
 
 let outputRoot = URL(fileURLWithPath: outputPath, isDirectory: true)
-for art in [sparkyArt(), glitchArt(), mossArt(), nyxArt()] {
+for art in [
+    sparkyArt(), glitchArt(), mossArt(), nyxArt(),
+    floppyArt(), tapeArt(), emberArt(), mugArt(), orbitArt(), jellyArt(),
+] {
     do {
         try write(art, to: outputRoot)
         if let sheetDir { try writeSheet(art, to: sheetDir) }

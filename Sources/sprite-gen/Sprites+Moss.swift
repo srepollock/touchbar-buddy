@@ -65,10 +65,6 @@ private func moss(
     return mouth.stamp(eyes.stamp(sprite))
 }
 
-private func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
-    points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
-}
-
 func mossArt() -> CharacterArt {
     let idle: [Sprite] = [
         moss(),

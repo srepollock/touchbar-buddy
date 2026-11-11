@@ -72,10 +72,6 @@ private func glitch(face: Face, led: Character = "R", arms: Arms = .down) -> Spr
     return face.stamp(sprite)
 }
 
-private func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
-    points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
-}
-
 func glitchArt() -> CharacterArt {
     let idle: [Sprite] = [
         glitch(face: .open),

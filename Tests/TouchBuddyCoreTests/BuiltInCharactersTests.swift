@@ -24,9 +24,12 @@ private func loadBuiltIns() throws -> [CharacterDescriptor] {
 struct BuiltInCharactersTests {
     @Test func allBuiltinsLoad() throws {
         let characters = try loadBuiltIns()
-        #expect(characters.count == 4)
+        #expect(characters.count == 10)
         let ids = Set(characters.map(\.id))
-        #expect(ids == ["builtin/sparky", "builtin/glitch", "builtin/moss", "builtin/nyx"])
+        #expect(ids == [
+            "builtin/sparky", "builtin/glitch", "builtin/moss", "builtin/nyx",
+            "builtin/floppy", "builtin/tape", "builtin/ember", "builtin/mug", "builtin/orbit", "builtin/jelly",
+        ])
     }
 
     @Test func everyStateHasAtLeast4Frames() throws {

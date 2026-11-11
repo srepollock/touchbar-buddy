@@ -1,0 +1,36 @@
+{
+  "displayName" : "Tape",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions. Rewinding, man.",
+      "All clear. Silence is a track too.",
+      "Nothing playing. Stay mellow."
+    ],
+    "finished" : [
+      "{project} is a wrap. That's a hit.",
+      "Track done in {project}. Smooth.",
+      "{project}: finished. Flip the tape?"
+    ],
+    "idle" : [
+      "{project} is chilling. Side A, paused.",
+      "Nothing spinning in {project}. Nice.",
+      "{project}: quiet. Cue the lo-fi."
+    ],
+    "permission" : [
+      "Hey, {project} wants to {detail}. Cool with you?",
+      "{project} is asking to {detail}. Drop the needle?",
+      "Mellow request from {project}: {detail}"
+    ],
+    "question" : [
+      "{project} needs your take: {detail}",
+      "Real quick, {project}: {detail}",
+      "{project}'s got a question, friend: {detail}"
+    ],
+    "working" : [
+      "{project} is rolling. Running {tool}.",
+      "Spinning up {project}. Easy does it.",
+      "{project}: {tool} on repeat. Good vibes."
+    ]
+  }
+}

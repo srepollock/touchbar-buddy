@@ -77,10 +77,6 @@ private func nyx(
     return lantern(sprite, handle: handle, flame: flame)
 }
 
-private func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
-    points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
-}
-
 func nyxArt() -> CharacterArt {
     let idle: [Sprite] = [
         nyx(wings: .mid),

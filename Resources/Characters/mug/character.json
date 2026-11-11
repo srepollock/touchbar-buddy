@@ -1,0 +1,36 @@
+{
+  "displayName" : "Mug",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions. Time for a nap.",
+      "All clear. Pass the espresso.",
+      "Nothing to brew. Zzz."
+    ],
+    "finished" : [
+      "{project} is done. Time for a refill.",
+      "Fresh pot of results from {project}.",
+      "{project}: finished. Cheers!"
+    ],
+    "idle" : [
+      "{project} is quiet... zzz... warm.",
+      "Nothing brewing in {project}. Cosy.",
+      "{project}: idle. Is it nap o'clock?"
+    ],
+    "permission" : [
+      "{project} wants to {detail}... yawn... ok?",
+      "Pardon me, {project} needs to {detail}.",
+      "{project}: {detail}. Need coffee first, though."
+    ],
+    "question" : [
+      "{project} asks: {detail} ...after my coffee?",
+      "Mmm... {project} has a question. {detail}",
+      "{project}: {detail} Sorry, drowsy."
+    ],
+    "working" : [
+      "{project} is brewing. Running {tool}.",
+      "Caffeinated and on it: {project}.",
+      "{project}: {tool} percolating. Smells good."
+    ]
+  }
+}

@@ -86,3 +86,8 @@ func exclamation(_ char: Character, bar: Int = 5, dot: Int = 2) -> [String] {
     let stroke = String(repeating: char, count: 2)
     return Array(repeating: stroke, count: bar) + ["  "] + Array(repeating: stroke, count: dot)
 }
+
+/// Scatters single-pixel confetti: each point is (x, y, palette char).
+func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
+    points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
+}
