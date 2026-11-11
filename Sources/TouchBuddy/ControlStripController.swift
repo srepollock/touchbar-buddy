@@ -10,11 +10,12 @@ private final class StripItemView: NSView {
     let sprite = SpriteView(frame: .zero)
     let fallbackDot = NSView(frame: .zero)
     let badge = NSTextField(labelWithString: "")
-    var onTap: () -> Void = {}
+    private let tapButton: TapButton
 
     override var intrinsicContentSize: NSSize { Self.size }
 
-    init() {
+    init(onTap: @escaping () -> Void) {
+        tapButton = TapButton(onTap: onTap)
         super.init(frame: NSRect(origin: .zero, size: Self.size))
         wantsLayer = true
         ring.cornerRadius = Self.size.height / 2
@@ -41,11 +42,12 @@ private final class StripItemView: NSView {
         badge.frame = NSRect(x: Self.size.width - 13, y: Self.size.height - 13, width: 13, height: 13)
         badge.isHidden = true
         addSubview(badge)
+
+        tapButton.frame = bounds
+        addSubview(tapButton)
     }
 
     required init?(coder: NSCoder) { nil }
-
-    override func mouseDown(with event: NSEvent) { onTap() }
 }
 
 @MainActor
@@ -53,7 +55,7 @@ final class ControlStripController {
     static let identifier = "ca.spollock.touchbuddy.strip"
 
     private let item: NSCustomTouchBarItem
-    private let view = StripItemView()
+    private let view: StripItemView
     private var character: CharacterDescriptor?
     private let fallback: CharacterDescriptor?
     private let frameCache: FrameCache
@@ -66,9 +68,9 @@ final class ControlStripController {
     ) {
         self.character = character
         self.frameCache = frameCache
+        view = StripItemView(onTap: onTap)
         self.fallback = fallback
         item = NSCustomTouchBarItem(identifier: NSTouchBarItem.Identifier(Self.identifier))
-        view.onTap = onTap
         item.view = view
         TBPAddSystemTrayItem(item)
         TBPSetControlStripPresence(Self.identifier, true)

@@ -6,20 +6,11 @@ import TouchBuddyCore
 private let logger = Logger(subsystem: "ca.spollock.touchbuddy", category: "dashboard")
 
 @MainActor
-private final class TapView: NSView {
-    var onTap: () -> Void = {}
+private final class SizedView: NSView {
     var fixedSize: NSSize?
-    private var dragged = false
 
     override var intrinsicContentSize: NSSize {
         fixedSize ?? super.intrinsicContentSize
-    }
-
-    override func mouseDown(with event: NSEvent) { dragged = false }
-    override func mouseDragged(with event: NSEvent) { dragged = true }
-    override func mouseUp(with event: NSEvent) {
-        guard !dragged else { return }
-        onTap()
     }
 }
 
@@ -50,9 +41,9 @@ final class DashboardController {
     private let speaker = Speaker()
 
     private let bar = NSTouchBar()
-    private let avatarView = TapView()
+    private let avatarView = SizedView()
     private let sprite = SpriteView(frame: .zero)
-    private let bubbleView = TapView()
+    private let bubbleView = SizedView()
     private let marquee = MarqueeLabel(frame: .zero)
     private let chipsScroll = ChipsScrollView()
 
@@ -60,6 +51,7 @@ final class DashboardController {
     private var focusID: String?
     private var character: CharacterDescriptor?
     private var isPresented = false
+    private var pinned = false
     private var dismissTimer: Timer?
     private var lastSpeechKey: SpeechKey?
     private var lastSpeechCharacterID: String?
@@ -73,30 +65,31 @@ final class DashboardController {
         self.frames = frames
         self.fallback = fallback
         self.onChipTap = onChipTap
+        TBPShowCloseBoxWhenFrontMost(true)
         buildBar()
     }
 
     func show(
         sessions: [SessionRecord], focus: SessionRecord?, character: CharacterDescriptor, autoDismiss: Bool
     ) {
+        cancelDismissTimer()
+        speaker.stop()
+        if !autoDismiss { pinned = true }
         self.sessions = sessions
         self.focusID = focus?.sessionID
         self.character = character
         let picked = render(now: Date())
 
-        TBPShowCloseBoxWhenFrontMost(true)
         TBPPresentSystemModal(bar, ControlStripController.identifier)
         isPresented = true
         marquee.isActive = true
-        logger.info("presented dashboard autoDismiss=\(autoDismiss, privacy: .public) sessions=\(sessions.count, privacy: .public)")
+        logger.info("presented dashboard autoDismiss=\(autoDismiss, privacy: .public) pinned=\(self.pinned, privacy: .public) sessions=\(sessions.count, privacy: .public)")
 
         if autoDismiss {
-            scheduleDismiss()
+            if !pinned { scheduleDismiss() }
             if picked, prefs.ttsEnabled, let line {
                 speaker.speak(line, voice: character.manifest.voice)
             }
-        } else {
-            cancelDismissTimer()
         }
     }
 
@@ -109,9 +102,11 @@ final class DashboardController {
     func dismiss() {
         cancelDismissTimer()
         speaker.stop()
+        pinned = false
+        marquee.isActive = false
+        sprite.stop()
         guard isPresented else { return }
         isPresented = false
-        marquee.isActive = false
         TBPMinimizeSystemModal(bar)
         logger.info("minimized dashboard")
     }
@@ -132,15 +127,19 @@ final class DashboardController {
 
     private func buildBar() {
         avatarView.fixedSize = NSSize(width: 36, height: Self.barHeight)
-        avatarView.onTap = { [weak self] in self?.dismiss() }
         sprite.frame = NSRect(x: 3, y: 0, width: 30, height: Self.barHeight)
         avatarView.addSubview(sprite)
+        let avatarButton = TapButton { [weak self] in self?.dismiss() }
+        avatarButton.frame = avatarView.bounds
+        avatarView.addSubview(avatarButton)
 
         bubbleView.wantsLayer = true
         bubbleView.layer?.cornerRadius = 12
         bubbleView.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
-        bubbleView.onTap = { [weak self] in self?.dismiss() }
         bubbleView.addSubview(marquee)
+        let bubbleButton = TapButton { [weak self] in self?.dismiss() }
+        bubbleButton.frame = bubbleView.bounds
+        bubbleView.addSubview(bubbleButton)
 
         chipsScroll.drawsBackground = false
         chipsScroll.hasHorizontalScroller = false
@@ -193,16 +192,18 @@ final class DashboardController {
     private var bubbleWidth: CGFloat = 0
 
     private func layoutBubble(text: String) {
-        marquee.text = text
         let width = min(MarqueeLabel.measure(text) + 24, Self.bubbleMaxWidth)
         bubbleWidth = width
         bubbleView.fixedSize = NSSize(width: width, height: Self.barHeight)
         bubbleView.frame = NSRect(x: 0, y: 0, width: width, height: Self.barHeight)
+        bubbleView.subviews.last?.frame = bubbleView.bounds
         bubbleView.invalidateIntrinsicContentSize()
         marquee.frame = NSRect(x: 12, y: 0, width: width - 24, height: Self.barHeight)
+        marquee.text = text
     }
 
     private func layoutChips(now: Date, focusID: String?) {
+        let previousOffset = chipsScroll.contentView.bounds.origin.x
         let document = NSView()
         var x: CGFloat = 0
         for session in sessions {
@@ -217,6 +218,10 @@ final class DashboardController {
         chipsScroll.width = min(contentWidth, available)
         chipsScroll.documentView = document
         chipsScroll.frame.size = NSSize(width: chipsScroll.width, height: Self.barHeight)
+        chipsScroll.isHidden = sessions.isEmpty
+        let maxOffset = max(0, contentWidth - chipsScroll.width)
+        chipsScroll.contentView.scroll(to: NSPoint(x: min(max(0, previousOffset), maxOffset), y: 0))
+        chipsScroll.reflectScrolledClipView(chipsScroll.contentView)
     }
 
     private func makeChip(for session: SessionRecord, now: Date, focused: Bool) -> NSView {
@@ -228,7 +233,7 @@ final class DashboardController {
         let labelHeight = label.frame.height
         let width = 10 + 8 + 6 + ceil(label.frame.width) + 10
 
-        let chip = TapView()
+        let chip = NSView()
         chip.wantsLayer = true
         chip.layer?.cornerRadius = 12
         chip.layer?.backgroundColor = NSColor(white: 1, alpha: focused ? 0.26 : 0.12).cgColor
@@ -243,7 +248,9 @@ final class DashboardController {
         label.frame.origin = NSPoint(x: 24, y: (Self.barHeight - labelHeight) / 2)
         chip.addSubview(label)
 
-        chip.onTap = { [weak self] in self?.onChipTap(session) }
+        let button = TapButton { [weak self] in self?.onChipTap(session) }
+        button.frame = chip.bounds
+        chip.addSubview(button)
         return chip
     }
 }

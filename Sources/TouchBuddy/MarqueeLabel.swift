@@ -107,7 +107,10 @@ final class MarqueeLabel: NSView {
         } else if !shouldRun, let timer {
             timer.invalidate()
             self.timer = nil
-            if scrolls { first.frame = fieldFrame(x: 0) }
+            if scrolls {
+                first.frame = fieldFrame(x: 0)
+                second.frame = fieldFrame(x: textWidth + Self.gap)
+            }
         }
     }
 
