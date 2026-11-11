@@ -6,10 +6,6 @@ private let palette: Palette = [
     "S": 0xDDE4EC, "F": 0x7B8794, "P": 0xFF8FA3, "Y": 0xFFD23F,
 ]
 
-private func repeated(_ char: Character, _ count: Int) -> String {
-    String(repeating: char, count: count)
-}
-
 private let bodyLines: [String] =
     [".NNNNNNNNNNNN.", "N" + repeated("K", 12) + "N"]
     + Array(repeating: "NL" + repeated("T", 11) + "N", count: 8)
@@ -40,7 +36,7 @@ private enum Mouth {
     func stamp(_ sprite: Sprite) -> Sprite {
         switch self {
         case .small: return sprite.stamped(["NN"], x: 10, y: 18)
-        case .yawn: return sprite.stamped(["NN", "NN"], x: 10, y: 18)
+        case .yawn: return sprite.stamped(["TNNT", "NNNN"], x: 9, y: 18)
         case .grin: return sprite.stamped(["NNNN", "TNNT"], x: 9, y: 18)
         case .round: return sprite.stamped(["NN", "NN"], x: 10, y: 18)
         }

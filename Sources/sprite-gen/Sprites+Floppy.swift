@@ -5,10 +5,6 @@ private let palette: Palette = [
     "D": 0x5C6879, "W": 0xF4F1E8, "R": 0xFF5A5F, "Y": 0xFFD23F,
 ]
 
-private func repeated(_ char: Character, _ count: Int) -> String {
-    String(repeating: char, count: count)
-}
-
 private let bodyLines: [String] =
     [".NNNNNNNNNNNNN..", "N" + repeated("B", 13) + "N.", "N" + repeated("B", 14) + "N"]
     + Array(repeating: "NL" + repeated("B", 13) + "N", count: 13)
@@ -23,8 +19,6 @@ private let shutterLines = [
 ]
 
 private let feet = ["NN", "NN"]
-private let armDown = ["BB", "BB", "BB", "NN"]
-private let armUp = ["NN", "BB", "BB", "BB"]
 private let smile = ["NWWN", "WNNW"]
 
 private enum Face {
@@ -54,19 +48,12 @@ private enum Face {
     }
 }
 
-private enum Arms {
-    case down, up, left, right
-}
-
-private func floppy(face: Face, shutter: Int = 8, arms: Arms = .down) -> Sprite {
+private func floppy(face: Face, shutter: Int = 8, arms: ArmPose = .down) -> Sprite {
     var sprite = Sprite.blank
         .stamped(bodyLines, x: 4, y: 4)
         .stamped(shutterLines, x: shutter, y: 5)
         .stamped(feet, x: 7, y: 21).stamped(feet, x: 16, y: 21)
-    let leftUp = arms == .up || arms == .left
-    let rightUp = arms == .up || arms == .right
-    sprite = sprite.stamped(leftUp ? armUp : armDown, x: 2, y: leftUp ? 7 : 12)
-    sprite = sprite.stamped(rightUp ? armUp : armDown, x: 20, y: rightUp ? 7 : 12)
+    sprite = withArms(sprite, arms, fill: "B", leftX: 2, rightX: 20, downY: 12, upY: 7)
     return face.stamp(sprite)
 }
 

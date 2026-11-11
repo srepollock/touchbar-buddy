@@ -5,10 +5,6 @@ private let palette: Palette = [
     "R": 0xB8392B, "Y": 0xFFD23F, "L": 0xF59A66,
 ]
 
-private func repeated(_ char: Character, _ count: Int) -> String {
-    String(repeating: char, count: count)
-}
-
 // 20 wide x 16 tall: label on top, window with two reels, tape-head trapezoid below.
 private let bodyLines: [String] = [
     repeated("N", 20),
@@ -29,9 +25,6 @@ private let bodyLines: [String] = [
     repeated("N", 20),
 ]
 
-private let feet = ["NN", "NN"]
-private let armDown = ["OO", "OO", "OO", "NN"]
-private let armUp = ["NN", "OO", "OO", "OO"]
 
 private enum Reel {
     case plus, cross, open, blink, happy, wide
@@ -72,13 +65,10 @@ private enum Mouth {
     }
 }
 
-private enum Arms {
-    case down, up, left, right
-}
-
 private func tape(
-    left: Reel, right: Reel? = nil, mouth: Mouth = .smile, window: Character = "K", arms: Arms = .down
+    left: Reel, right: Reel? = nil, mouth: Mouth = .smile, window: Character = "K", arms: ArmPose = .down, feetRows: Int = 2
 ) -> Sprite {
+    let feet = Array(repeating: "NN", count: feetRows)
     var sprite = Sprite.blank
         .stamped(bodyLines, x: 2, y: 5)
         .stamped(feet, x: 5, y: 21).stamped(feet, x: 17, y: 21)
@@ -88,10 +78,7 @@ private func tape(
     sprite = sprite
         .stamped(left.resolved(window: window), x: 6, y: 11)
         .stamped((right ?? left).resolved(window: window), x: 13, y: 11)
-    let leftUp = arms == .up || arms == .left
-    let rightUp = arms == .up || arms == .right
-    sprite = sprite.stamped(leftUp ? armUp : armDown, x: 0, y: leftUp ? 8 : 13)
-    sprite = sprite.stamped(rightUp ? armUp : armDown, x: 22, y: rightUp ? 8 : 13)
+    sprite = withArms(sprite, arms, fill: "O", leftX: 0, rightX: 22, downY: 13, upY: 8)
     return mouth.stamp(sprite)
 }
 
@@ -111,13 +98,16 @@ func tapeArt() -> CharacterArt {
             .shifted(dy: step % 2)
     }
 
-    let bang = exclamation("Y", bar: 3, dot: 1)
     let needsInput: [Sprite] = [
-        tape(left: .wide, mouth: .round, window: "Y", arms: .up).stamped(bang, x: 11, y: 0),
-        tape(left: .wide, mouth: .round, window: "K", arms: .down).shifted(dy: 1).stamped(bang, x: 11, y: 0),
-        tape(left: .wide, mouth: .round, window: "Y", arms: .up).stamped(bang, x: 11, y: 0),
-        tape(left: .wide, mouth: .round, window: "K", arms: .down).shifted(dy: 1).stamped(bang, x: 11, y: 0),
-    ]
+        (window: "Y", arms: ArmPose.up, bang: "Y" as Character),
+        (window: "K", arms: ArmPose.down, bang: "W" as Character),
+        (window: "Y", arms: ArmPose.up, bang: "Y" as Character),
+        (window: "K", arms: ArmPose.down, bang: "W" as Character),
+    ].map { frame in
+        tape(left: .wide, mouth: .round, window: frame.window, arms: frame.arms, feetRows: 1)
+            .shifted(dy: 2)
+            .stamped(exclamation(frame.bang, bar: 4, dot: 2), x: 11, y: 0)
+    }
 
     let finished: [Sprite] = [
         tape(left: .happy, mouth: .grin).shifted(dy: 1),

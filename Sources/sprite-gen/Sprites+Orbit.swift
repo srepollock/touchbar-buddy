@@ -98,15 +98,15 @@ func orbitArt() -> CharacterArt {
     }
 
     let working: [Sprite] = (0..<8).map { frame in
-        orbit(.focus, .flat, moon: frame, dy: frame % 2)
+        orbit(.focus, .flat, moon: frame * 2, dy: frame % 2)
     }
 
-    let bang = exclamation("Y", bar: 4, dot: 2)
+    let bang = exclamation("W", bar: 6, dot: 2)
     let needsInput: [Sprite] = [
-        orbit(.wide, .round, moon: 1, dx: -1).stamped(bang, x: 2, y: 1),
-        orbit(.wide, .round, moon: 1, dx: 1, dy: 1).stamped(bang, x: 2, y: 1),
-        orbit(.wide, .round, moon: 1, dx: -1).stamped(bang, x: 2, y: 1),
-        orbit(.wide, .round, moon: 1, dx: 1, dy: 1).stamped(bang, x: 2, y: 1),
+        orbit(.wide, .round, moon: 1, dx: -1).stamped(bang, x: 2, y: 2),
+        orbit(.wide, .round, moon: 1, dx: 1, dy: 1).stamped(bang, x: 2, y: 2),
+        orbit(.wide, .round, moon: 1, dx: -1).stamped(bang, x: 2, y: 2),
+        orbit(.wide, .round, moon: 1, dx: 1, dy: 1).stamped(bang, x: 2, y: 2),
     ]
 
     let finished: [Sprite] = [

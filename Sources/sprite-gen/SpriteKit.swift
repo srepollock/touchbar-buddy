@@ -91,3 +91,25 @@ func exclamation(_ char: Character, bar: Int = 5, dot: Int = 2) -> [String] {
 func confetti(_ sprite: Sprite, _ points: [(Int, Int, Character)]) -> Sprite {
     points.reduce(sprite) { $0.pixels([($1.0, $1.1)], $1.2) }
 }
+
+func repeated(_ char: Character, _ count: Int) -> String {
+    String(repeating: char, count: count)
+}
+
+enum ArmPose {
+    case down, up, left, right
+}
+
+/// Stamps two 2 px wide arms: `fill` limbs with a dark "N" hand at the bottom (down) or top (up).
+func withArms(
+    _ sprite: Sprite, _ pose: ArmPose, fill: Character, leftX: Int, rightX: Int, downY: Int, upY: Int
+) -> Sprite {
+    let pair = String(repeating: fill, count: 2)
+    let down = [pair, pair, pair, "NN"]
+    let up = ["NN", pair, pair, pair]
+    let leftUp = pose == .up || pose == .left
+    let rightUp = pose == .up || pose == .right
+    return sprite
+        .stamped(leftUp ? up : down, x: leftX, y: leftUp ? upY : downY)
+        .stamped(rightUp ? up : down, x: rightX, y: rightUp ? upY : downY)
+}
