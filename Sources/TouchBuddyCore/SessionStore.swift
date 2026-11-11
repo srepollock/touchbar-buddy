@@ -4,7 +4,7 @@ import os
 public struct TouchBuddyPaths: Sendable {
     public let root: URL
     public var sessions: URL { root.appendingPathComponent("sessions", isDirectory: true) }
-    public var characters: URL { root.appendingPathComponent("characters", isDirectory: true) }
+    public var characters: URL { root.appendingPathComponent("Characters", isDirectory: true) }
 
     public static func resolve(
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -52,11 +52,16 @@ public struct SessionStore: Sendable {
 
     public func write(_ record: SessionRecord) throws {
         guard let url = fileURL(for: record.sessionID) else { throw SessionStoreError.invalidSessionID }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
         let data = try Self.encoder().encode(record)
         let temp = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
         do {
-            try data.write(to: temp)
+            guard FileManager.default.createFile(
+                atPath: temp.path, contents: data, attributes: [.posixPermissions: 0o600]
+            ) else { throw CocoaError(.fileWriteUnknown) }
             if rename(temp.path, url.path) != 0 {
                 throw CocoaError(.fileWriteUnknown)
             }

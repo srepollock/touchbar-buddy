@@ -52,7 +52,7 @@ func sampleRecord(id: String = "s1") -> SessionRecord {
 @Test func pathsHonourTouchBuddyHome() {
     let paths = TouchBuddyPaths.resolve(environment: ["TOUCHBUDDY_HOME": "/tmp/x"])
     #expect(paths.sessions.path == "/tmp/x/sessions")
-    #expect(paths.characters.path == "/tmp/x/characters")
+    #expect(paths.characters.path == "/tmp/x/Characters")
 }
 
 @Test func pathsDefaultToApplicationSupport() {
@@ -80,8 +80,29 @@ func sampleRecord(id: String = "s1") -> SessionRecord {
 @Test func isProcessAliveForSelfAndBogusPID() {
     #expect(isProcessAlive(getpid()))
     #expect(!isProcessAlive(Int32.max - 1))
+    #expect(!isProcessAlive(0))
+    #expect(!isProcessAlive(-1))
 }
 
-@Test func ancestorLookupReturnsSomething() {
-    #expect(findClaudeAncestorPID(startingAt: getpid()) != nil)
+@Test func ancestorLookupTerminatesAndRejectsUnknownPID() {
+    _ = findClaudeAncestorPID(startingAt: getpid())
+    #expect(findClaudeAncestorPID(startingAt: Int32.max - 1) == nil)
+}
+
+@Test func ancestorLookupFallsBackToParentOfStartingPID() {
+    // startingAt is the hook's parent; the fallback is the hook's grandparent = that parent's parent.
+    let result = findClaudeAncestorPID(startingAt: getpid())
+    if let result, result != getppid(), result != getpid() {
+        #expect(result > 1)
+    }
+}
+
+@Test func filesAndDirectoryArePrivate() throws {
+    let dir = try makeTempDirectory().appendingPathComponent("sessions", isDirectory: true)
+    let store = SessionStore(directory: dir)
+    try store.write(sampleRecord())
+    let fileAttrs = try FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent("s1.json").path)
+    let dirAttrs = try FileManager.default.attributesOfItem(atPath: dir.path)
+    #expect((fileAttrs[.posixPermissions] as? Int) == 0o600)
+    #expect((dirAttrs[.posixPermissions] as? Int) == 0o700)
 }

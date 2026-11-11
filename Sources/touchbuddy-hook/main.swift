@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import TouchBuddyCore
 
-let input = FileHandle.standardInput.readDataToEndOfFile()
+let input = (try? FileHandle.standardInput.readToEnd()) ?? Data()
 _ = runHook(
     stdin: input,
     environment: ProcessInfo.processInfo.environment,
