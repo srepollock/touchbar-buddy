@@ -1,9 +1,6 @@
 import AppKit
-import OSLog
 import TouchBarPrivate
 import TouchBuddyCore
-
-private let logger = Logger(subsystem: "ca.spollock.touchbuddy", category: "strip")
 
 @MainActor
 private final class StripItemView: NSView {
@@ -59,13 +56,16 @@ final class ControlStripController {
     private let view = StripItemView()
     private var character: CharacterDescriptor?
     private let fallback: CharacterDescriptor?
-    private var frameCache: [String: [AnimationFrame]] = [:]
-    private var failedKeys: Set<String> = []
+    private let frameCache: FrameCache
     private var overall: SessionState?
     private var count = 0
 
-    init(character: CharacterDescriptor?, fallback: CharacterDescriptor?, onTap: @escaping () -> Void) {
+    init(
+        character: CharacterDescriptor?, fallback: CharacterDescriptor?, frameCache: FrameCache,
+        onTap: @escaping () -> Void
+    ) {
         self.character = character
+        self.frameCache = frameCache
         self.fallback = fallback
         item = NSCustomTouchBarItem(identifier: NSTouchBarItem.Identifier(Self.identifier))
         view.onTap = onTap
@@ -88,24 +88,6 @@ final class ControlStripController {
         render()
     }
 
-    private func frames(
-        for descriptor: CharacterDescriptor, state: SessionState
-    ) -> (key: String, frames: [AnimationFrame])? {
-        let key = "\(descriptor.id)|\(state.rawValue)"
-        if let cached = frameCache[key] { return (key, cached) }
-        if failedKeys.contains(key) { return nil }
-        do {
-            let decoded = try loadFrames(descriptor.animation(for: state), fps: descriptor.manifest.fps ?? 8)
-            guard !decoded.isEmpty else { throw CharacterError.unreadable(descriptor.id) }
-            frameCache[key] = decoded
-            return (key, decoded)
-        } catch {
-            logger.error("frame decode failed for \(key, privacy: .public): \(String(describing: error), privacy: .public)")
-            failedKeys.insert(key)
-            return nil
-        }
-    }
-
     private func render() {
         let state = overall ?? .idle
         let color = statusColor(overall)
@@ -121,8 +103,7 @@ final class ControlStripController {
             view.ring.add(pulse, forKey: "pulse")
         }
 
-        let resolved = character.flatMap { frames(for: $0, state: state) }
-            ?? fallback.flatMap { $0.id == character?.id ? nil : frames(for: $0, state: state) }
+        let resolved = frameCache.resolve(character: character, fallback: fallback, state: state)
         if let resolved {
             view.sprite.isHidden = false
             view.fallbackDot.isHidden = true

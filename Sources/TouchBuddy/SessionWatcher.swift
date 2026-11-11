@@ -66,7 +66,7 @@ final class SessionWatcher {
         let isFirstTick = lastSignature == nil
         let triggers = isFirstTick ? [] : popupTriggers(old: previous, new: ordered, now: now)
         let signature = displaySignature(ordered, now: now)
-        let changed = signature != lastSignature
+        let changed = signature != lastSignature || ordered != previous
         previous = ordered
         lastSignature = signature
         if changed || !triggers.isEmpty {
