@@ -165,3 +165,32 @@ private func existingRecord() -> SessionRecord {
     #expect(toolSummary(toolName: "Mystery", input: nil) == "Mystery")
     #expect(toolSummary(toolName: nil, input: nil) == nil)
 }
+
+@Test func nonStringToolInputStillDecodes() throws {
+    let weird = try event(
+        "PreToolUse",
+        extra: "\"tool_name\": \"mcp__x\", \"tool_input\": {\"description\": 42, \"command\": [\"a\"]}"
+    )
+    #expect(weird.toolInput?.command == nil)
+    #expect(weird.toolInput?.description == nil)
+    let weirdRecord = try upserted(reduce(existing: nil, payload: weird, context: context))
+    #expect(weirdRecord.detail == "mcp__x")
+
+    let scalar = try event("PreToolUse", extra: "\"tool_name\": \"mcp__x\", \"tool_input\": \"x\"")
+    #expect(scalar.toolInput?.command == nil)
+    #expect(scalar.toolInput?.filePath == nil)
+    let scalarRecord = try upserted(reduce(existing: nil, payload: scalar, context: context))
+    #expect(scalarRecord.state == .working)
+}
+
+@Test func missingCwdPreservesExistingProject() throws {
+    for cwd in [nil, ""] as [String?] {
+        let p = try event("UserPromptSubmit", cwd: cwd)
+        let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+        #expect(record.cwd == "/Users/x/projects/touchbar-app")
+        #expect(record.projectName == "touchbar-app")
+    }
+    let fresh = try upserted(reduce(existing: nil, payload: event("UserPromptSubmit", cwd: ""), context: context))
+    #expect(fresh.projectName == "unknown")
+    #expect(fresh.cwd == "")
+}

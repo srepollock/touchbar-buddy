@@ -41,12 +41,19 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
         return .unchanged
     }
 
-    let cwd = payload.cwd ?? existing?.cwd
+    let payloadCwd = payload.cwd.flatMap { $0.isEmpty ? nil : $0 }
+    let cwd = payloadCwd ?? existing?.cwd
+    let projectName: String
+    if payloadCwd == nil, let existing {
+        projectName = existing.projectName
+    } else {
+        projectName = cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown"
+    }
     return .upsert(
         SessionRecord(
             sessionID: payload.sessionID,
             cwd: cwd ?? "",
-            projectName: cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "unknown",
+            projectName: projectName,
             state: transition.state,
             speechKind: transition.speechKind,
             detail: transition.detail,
