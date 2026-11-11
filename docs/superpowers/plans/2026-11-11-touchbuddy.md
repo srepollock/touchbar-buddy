@@ -566,6 +566,7 @@ The art rules, frame minimums, speech rules (≥3 lines per kind, `{project}` ev
 - Create: `Sources/TouchBuddy/SessionFocuser.swift`, `Sources/TouchBuddyCore/FocusTarget.swift`
 - Test: `Tests/TouchBuddyCoreTests/FocusTargetTests.swift`
 - Modify: `Sources/TouchBuddy/AppDelegate.swift` (`onChipTap` → focuser, then dismiss the dashboard)
+- Modify: `Sources/TouchBuddy/DashboardController.swift`. Owner request: a **tap** on the speech bubble focuses the focus session, exactly like its chip. A drag still scrolls, and taps don't fire during or right after a scroll. Plain NSView `mouseDown` is NOT delivered by the Touch Bar (learned in Task 10). Use an `NSClickGestureRecognizer` with `allowedTouchTypes = .direct` on the bubble scroll view, or an equivalent that the Touch Bar actually delivers, so it doesn't swallow scrolling. The chip and bubble swipe behaviour must not regress; the owner confirmed both on hardware.
 - Create: `Resources/TouchBuddy.entitlements` (`com.apple.security.automation.apple-events` = true)
 - Modify: `scripts/build-app.sh`:
   - sign `Contents/MacOS/touchbuddy-hook` explicitly first, then the bundle with `--options runtime --entitlements Resources/TouchBuddy.entitlements`, and drop `--deep`. (Controller ruling from the Task 1 review: hardened runtime blocks Apple Events without this entitlement.)
@@ -635,7 +636,7 @@ Owner request added mid-build. See the spec section "Quick replies from the Touc
   - Any update whose resulting state isn't `.needsInput` clears both fields.
   - Permission notifications leave them nil.
 
-  Dashboard changes:
+  Dashboard changes (owner request: permission replies are a **green ✓** (#7ED321 tint, SF Symbol `checkmark`) for Allow and a **red ✗** (#E5484D tint, SF Symbol `xmark`) for Deny, with a smaller secondary "Always" button. A two-option `AskUserQuestion` whose labels read as yes/no uses the same ✓/✗. Add pure `isYesNo(_ options: [String]) -> Bool` in Core with tests):
   - When `quickReplies(for: focus)` is non-empty, show one button per reply between the bubble and the chips: "Allow", "Always", "Deny", or the option label run through `chipTitle(_, maxChars: 14)`.
   - The bubble shrinks to fit.
   - On tap, call `ReplySender.send`. If it returns `true`, dismiss the dashboard. If `false`, grey out all reply buttons and leave the dashboard open.

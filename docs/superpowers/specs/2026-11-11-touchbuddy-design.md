@@ -64,13 +64,16 @@ When any session **transitions into** needs-input, TouchBuddy presents its dashb
 ### Manual open
 Tapping the Control Strip icon opens the same dashboard with all sessions. ✕ closes it and restores the normal bar.
 
+### Tapping the speech bubble (owner request, 2026-11-11)
+Tapping the speech bubble opens the conversation it refers to (the focus session), exactly like tapping that session's chip. Swiping the bubble still scrolls it; only a tap without a drag opens the chat.
+
 ### Session chips
 One chip per session: status dot + project name (basename of the session's cwd), sorted most-urgent first. If they don't fit, the chip area scrolls horizontally. **Tapping a chip focuses that session's iTerm tab** (or activates Claude.app if the session came from the desktop app's Code tab).
 
 ### Quick replies from the Touch Bar (owner request, 2026-11-11, in v1)
 When the focused session needs input, the dashboard shows reply buttons next to the speech bubble:
-- **Permission prompt:** all of the prompt's options. These are **Allow**, **Always allow** (Claude Code's "Yes, and don't ask again…" option) and **Deny**.
-- **Multiple-choice question** (`AskUserQuestion`): one button per option label, for a single question with single-select only. Multi-question or multi-select prompts show no reply buttons; the chip opens the tab instead.
+- **Permission prompt:** a **green ✓** (Allow) and a **red ✗** (Deny), plus a smaller, secondary **Always** button for Claude Code's "Yes, and don't ask again…" option (owner request, 2026-11-11).
+- **Multiple-choice question** (`AskUserQuestion`): when there are exactly two options and they read as yes/no (case-insensitive "yes"/"no", or labels starting with those words), they are shown as the same green ✓ / red ✗. Otherwise there is one button per option label, for a single question with single-select only. Multi-question or multi-select prompts show no reply buttons; the chip opens the tab instead.
 - **Free-text replies are not supported** on the Touch Bar. Tapping the chip opens the tab so the owner can type.
 
 How a reply is sent: TouchBuddy types the matching keystroke into that exact iTerm session via AppleScript `write text … newline NO`, without bringing the tab to the front. Safety rules:
