@@ -1,0 +1,36 @@
+{
+  "displayName" : "Glitch",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions. Zero. Nada.",
+      "All clear. Boring. Good.",
+      "Idle. No input required."
+    ],
+    "finished" : [
+      "{project}: done. Exit 0.",
+      "[{project}] complete.",
+      "{project} finished. You're welcome."
+    ],
+    "idle" : [
+      "{project}: idle.",
+      "[{project}] standing by.",
+      "{project}: nothing. Still nothing."
+    ],
+    "permission" : [
+      "{project}: permission needed. {detail}",
+      "{project} requests: {detail}. Y/N?",
+      "[{project}] approve? {detail}"
+    ],
+    "question" : [
+      "{project} asks: {detail}",
+      "[{project}] input required: {detail}",
+      "{project}: query. {detail}"
+    ],
+    "working" : [
+      "{project}: running {tool}.",
+      "[{project}] processing...",
+      "{project}: busy. Don't poke."
+    ]
+  }
+}

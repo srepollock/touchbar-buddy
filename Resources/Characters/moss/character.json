@@ -1,0 +1,36 @@
+{
+  "displayName" : "Moss",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "All is calm. Nothing needs you 🌿",
+      "No sessions. Time for tea ☕",
+      "Peaceful. Enjoy the quiet."
+    ],
+    "finished" : [
+      "{project} is all done. Lovely work 🍄",
+      "All tucked in: {project} finished.",
+      "{project} bloomed! Time for tea ☕"
+    ],
+    "idle" : [
+      "{project} is resting quietly 🍄",
+      "Cosy and calm in {project}.",
+      "{project}: nothing to do. Breathe in..."
+    ],
+    "permission" : [
+      "{project} would like your okay: {detail} 🍄",
+      "A small request from {project}: {detail}",
+      "When you have a moment: {detail} ({project})"
+    ],
+    "question" : [
+      "{project} wonders: {detail} 🌱",
+      "A gentle question from {project}: {detail}",
+      "Whenever you're ready, {project}: {detail}"
+    ],
+    "working" : [
+      "{project} is growing along nicely 🌱",
+      "Slow and steady in {project}...",
+      "{project}: tending to {tool} 🍄"
+    ]
+  }
+}
