@@ -29,6 +29,34 @@ private func gifDelay(of source: CGImageSource, at index: Int) -> TimeInterval {
     return max(delay, minimumGIFDelay)
 }
 
+private let maxFrameCount = 500
+private let maxSourcePixels = 4096
+private let maxThumbnailPixels = 256
+
+private func decodeFrame(from source: CGImageSource, at index: Int, path: String) throws -> CGImage {
+    guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+          let width = properties[kCGImagePropertyPixelWidth] as? Int,
+          let height = properties[kCGImagePropertyPixelHeight] as? Int,
+          width <= maxSourcePixels, height <= maxSourcePixels
+    else {
+        throw CharacterError.unreadable(path)
+    }
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxThumbnailPixels,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+    ]
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary) else {
+        throw CharacterError.unreadable(path)
+    }
+    return image
+}
+
+private func pngFrameDuration(fps: Double) -> TimeInterval {
+    let effectiveFPS = fps.isFinite && fps > 0 ? fps : defaultFPS
+    return max(1 / effectiveFPS, minimumGIFDelay)
+}
+
 public func loadFrames(_ source: AnimationSource, fps: Double) throws -> [AnimationFrame] {
     switch source {
     case .gif(let url):
@@ -36,24 +64,26 @@ public func loadFrames(_ source: AnimationSource, fps: Double) throws -> [Animat
             throw CharacterError.unreadable(url.path)
         }
         let count = CGImageSourceGetCount(imageSource)
-        guard count > 0 else { throw CharacterError.unreadable(url.path) }
+        guard count > 0, count <= maxFrameCount else { throw CharacterError.unreadable(url.path) }
         return try (0..<count).map { index in
-            guard let image = CGImageSourceCreateImageAtIndex(imageSource, index, nil) else {
-                throw CharacterError.unreadable(url.path)
-            }
-            return AnimationFrame(image: image, duration: gifDelay(of: imageSource, at: index))
+            AnimationFrame(
+                image: try decodeFrame(from: imageSource, at: index, path: url.path),
+                duration: gifDelay(of: imageSource, at: index)
+            )
         }
 
     case .frames(let urls):
-        let effectiveFPS = fps > 0 ? fps : defaultFPS
-        let duration = 1 / effectiveFPS
+        guard urls.count <= maxFrameCount else {
+            throw CharacterError.unreadable(urls.first?.deletingLastPathComponent().path ?? "")
+        }
+        let duration = pngFrameDuration(fps: fps)
         return try urls.map { url in
             guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
-                  let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+                  CGImageSourceGetCount(imageSource) > 0
             else {
                 throw CharacterError.unreadable(url.path)
             }
-            return AnimationFrame(image: image, duration: duration)
+            return AnimationFrame(image: try decodeFrame(from: imageSource, at: 0, path: url.path), duration: duration)
         }
     }
 }

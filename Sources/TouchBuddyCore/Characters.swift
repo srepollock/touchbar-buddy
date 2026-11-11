@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import os
 
 private let characterLogger = Logger(subsystem: "ca.spollock.touchbuddy", category: "characters")
@@ -64,41 +65,65 @@ private func numericFrameOrder(_ lhs: URL, _ rhs: URL) -> Bool {
     }
 }
 
-private func animationSource(for state: SessionState, in dir: URL) -> AnimationSource? {
+private func isDirectory(_ url: URL) -> Bool {
+    var flag: ObjCBool = false
+    return FileManager.default.fileExists(atPath: url.path, isDirectory: &flag) && flag.boolValue
+}
+
+private func isReadableImage(_ url: URL) -> Bool {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+    return CGImageSourceGetCount(source) > 0
+}
+
+private func animationSource(for state: SessionState, in dir: URL) throws -> AnimationSource? {
     let fileManager = FileManager.default
-    let gif = dir.appendingPathComponent("\(state.rawValue).gif")
-    if fileManager.fileExists(atPath: gif.path) {
-        return .gif(gif)
+    let gifName = "\(state.rawValue).gif"
+    let siblings = (try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? []
+    if let name = siblings.first(where: { $0.lowercased() == gifName && !isDirectory(dir.appendingPathComponent($0)) }) {
+        return .gif(dir.appendingPathComponent(name))
     }
 
     let folder = dir.appendingPathComponent(state.rawValue, isDirectory: true)
-    var isDirectory: ObjCBool = false
-    guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue,
-          let entries = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+    guard isDirectory(folder),
+          let names = try? fileManager.contentsOfDirectory(atPath: folder.path)
     else {
         return nil
     }
-    let pngs = entries
-        .filter { $0.pathExtension.lowercased() == "png" }
+    let pngs = names
+        .filter { ($0 as NSString).pathExtension.lowercased() == "png" }
+        .map { folder.appendingPathComponent($0) }
         .sorted(by: numericFrameOrder)
     return pngs.isEmpty ? nil : .frames(pngs)
 }
 
 public func loadCharacter(at dir: URL, idPrefix: String) throws -> CharacterDescriptor {
     let manifestURL = dir.appendingPathComponent("character.json")
-    guard let data = try? Data(contentsOf: manifestURL),
-          let manifest = try? JSONDecoder().decode(CharacterManifest.self, from: data)
-    else {
+    guard let data = try? Data(contentsOf: manifestURL) else {
+        throw CharacterError.missingManifest
+    }
+    let manifest: CharacterManifest
+    do {
+        manifest = try JSONDecoder().decode(CharacterManifest.self, from: data)
+    } catch {
+        characterLogger.error("invalid manifest \(manifestURL.path, privacy: .public): \(String(describing: error), privacy: .public)")
         throw CharacterError.missingManifest
     }
 
-    guard let idle = animationSource(for: .idle, in: dir) else {
+    guard let idle = try animationSource(for: .idle, in: dir) else {
         throw CharacterError.missingIdle
+    }
+    let probe: URL
+    switch idle {
+    case .gif(let url): probe = url
+    case .frames(let urls): probe = urls[0]
+    }
+    guard isReadableImage(probe) else {
+        throw CharacterError.unreadable(probe.path)
     }
 
     var animations: [SessionState: AnimationSource] = [:]
     for state in SessionState.allCases {
-        animations[state] = state == .idle ? idle : (animationSource(for: state, in: dir) ?? idle)
+        animations[state] = state == .idle ? idle : (try animationSource(for: state, in: dir) ?? idle)
     }
 
     return CharacterDescriptor(
@@ -109,17 +134,14 @@ public func loadCharacter(at dir: URL, idPrefix: String) throws -> CharacterDesc
 }
 
 private func discover(in root: URL, idPrefix: String) -> [CharacterDescriptor] {
-    guard let entries = try? FileManager.default.contentsOfDirectory(
-        at: root,
-        includingPropertiesForKeys: [.isDirectoryKey],
-        options: [.skipsHiddenFiles]
-    ) else {
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else {
         return []
     }
+    let entries = names.filter { !$0.hasPrefix(".") }.map { root.appendingPathComponent($0, isDirectory: true) }
 
     var found: [CharacterDescriptor] = []
     for entry in entries {
-        guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+        guard isDirectory(entry) else { continue }
         do {
             found.append(try loadCharacter(at: entry, idPrefix: idPrefix))
         } catch {

@@ -12,30 +12,33 @@ private func makeTempDir() throws -> URL {
     return dir
 }
 
-private func makeImage(gray: UInt8 = 128) -> CGImage {
+private func makeImage(gray: UInt8 = 128, width: Int = 2, height: Int = 2) -> CGImage {
     let context = CGContext(
-        data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
         space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     )!
     context.setFillColor(red: CGFloat(gray) / 255, green: 0.2, blue: 0.4, alpha: 1)
-    context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     return context.makeImage()!
 }
 
-private func writePNG(to url: URL) throws {
+private func writePNG(to url: URL, width: Int = 2, height: Int = 2) throws {
     let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
-    CGImageDestinationAddImage(destination, makeImage(), nil)
+    CGImageDestinationAddImage(destination, makeImage(width: width, height: height), nil)
     #expect(CGImageDestinationFinalize(destination))
 }
 
-private func writeGIF(to url: URL, frames: Int = 2, delay: Double = 0.1) throws {
+private func writeGIF(
+    to url: URL, frames: Int = 2, delay: Double = 0.1,
+    delayKey: CFString = kCGImagePropertyGIFDelayTime, size: Int = 2
+) throws {
     let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames, nil)!
     let fileProps = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary
     CGImageDestinationSetProperties(destination, fileProps)
     for index in 0..<frames {
-        let frameProps = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay]] as CFDictionary
-        CGImageDestinationAddImage(destination, makeImage(gray: UInt8(40 + index * 100)), frameProps)
+        let frameProps = [kCGImagePropertyGIFDictionary: [delayKey: delay]] as CFDictionary
+        CGImageDestinationAddImage(destination, makeImage(gray: UInt8(40 + (index % 2) * 100), width: size, height: size), frameProps)
     }
     #expect(CGImageDestinationFinalize(destination))
 }
@@ -187,10 +190,6 @@ private func descriptor(id: String, name: String) -> CharacterDescriptor {
 
     @Test func pngFramesSortedNumerically() throws {
         let root = try makeTempDir()
-        for name in ["10.png", "2.png", "1.png", "b.png", "a.png"] {
-            try writePNG(to: root.appendingPathComponent(name))
-        }
-        try Data("x".utf8).write(to: root.appendingPathComponent("notes.txt"))
         let dir = try makeCharacter(in: root, folder: "c", name: "C", withIdle: false)
         let idle = dir.appendingPathComponent("idle", isDirectory: true)
         try FileManager.default.createDirectory(at: idle, withIntermediateDirectories: true)
@@ -215,11 +214,113 @@ private func descriptor(id: String, name: String) -> CharacterDescriptor {
     @Test func gifDelayClampsToMinimum() throws {
         let root = try makeTempDir()
         let url = root.appendingPathComponent("fast.gif")
-        try writeGIF(to: url, frames: 2, delay: 0.0)
+        try writeGIF(to: url, frames: 2, delay: 0.001, delayKey: kCGImagePropertyGIFUnclampedDelayTime)
 
         let frames = try loadFrames(.gif(url), fps: 8)
 
-        #expect(frames.allSatisfy { $0.duration >= 0.02 })
+        #expect(frames.allSatisfy { $0.duration == 0.02 })
+    }
+
+    @Test func gifDelayTimeOnlyFallback() throws {
+        let root = try makeTempDir()
+        let url = root.appendingPathComponent("slow.gif")
+        try writeGIF(to: url, frames: 2, delay: 0.3, delayKey: kCGImagePropertyGIFDelayTime)
+
+        let frames = try loadFrames(.gif(url), fps: 8)
+
+        #expect(frames.allSatisfy { abs($0.duration - 0.3) < 0.001 })
+    }
+
+    @Test func pngDurationHandlesDegenerateFPS() throws {
+        let root = try makeTempDir()
+        let url = root.appendingPathComponent("1.png")
+        try writePNG(to: url)
+
+        #expect(try loadFrames(.frames([url]), fps: 0)[0].duration == 0.125)
+        #expect(try loadFrames(.frames([url]), fps: .nan)[0].duration == 0.125)
+        #expect(try loadFrames(.frames([url]), fps: .infinity)[0].duration == 0.125)
+        #expect(try loadFrames(.frames([url]), fps: 1e308)[0].duration == 0.02)
+    }
+
+    @Test func tooManyFramesThrows() throws {
+        let root = try makeTempDir()
+        let url = root.appendingPathComponent("long.gif")
+        try writeGIF(to: url, frames: 501, delay: 0.1, size: 1)
+
+        #expect(throws: CharacterError.unreadable(url.path)) {
+            try loadFrames(.gif(url), fps: 8)
+        }
+    }
+
+    @Test func oversizedDimensionThrows() throws {
+        let root = try makeTempDir()
+        let url = root.appendingPathComponent("wide.png")
+        try writePNG(to: url, width: 4097, height: 1)
+
+        #expect(throws: CharacterError.unreadable(url.path)) {
+            try loadFrames(.frames([url]), fps: 8)
+        }
+    }
+
+    @Test func largeFramesAreDownsampledAndSmallOnesKeepSize() throws {
+        let root = try makeTempDir()
+        let big = root.appendingPathComponent("big.png")
+        let small = root.appendingPathComponent("small.png")
+        try writePNG(to: big, width: 512, height: 512)
+        try writePNG(to: small, width: 48, height: 48)
+
+        let frames = try loadFrames(.frames([big, small]), fps: 8)
+
+        #expect(frames[0].image.width <= 256 && frames[0].image.height <= 256)
+        #expect(frames[1].image.width == 48 && frames[1].image.height == 48)
+    }
+
+    @Test func discoverFollowsSymlinkedFolders() throws {
+        let builtIn = try makeTempDir()
+        let user = try makeTempDir()
+        let elsewhere = try makeTempDir()
+        let real = try makeCharacter(in: elsewhere, folder: "real", name: "Linked")
+        try FileManager.default.createSymbolicLink(
+            at: user.appendingPathComponent("linked"), withDestinationURL: real
+        )
+
+        let found = discoverCharacters(builtInDir: builtIn, userDir: user)
+
+        #expect(found.map(\.id) == ["user/linked"])
+    }
+
+    @Test func discoverSkipsCorruptIdle() throws {
+        let builtIn = try makeTempDir()
+        let user = try makeTempDir()
+        let dir = try makeCharacter(in: user, folder: "corrupt", name: "Corrupt", withIdle: false)
+        try Data((0..<256).map { _ in UInt8.random(in: 0...255) }).write(to: dir.appendingPathComponent("idle.gif"))
+        _ = try makeCharacter(in: user, folder: "fine", name: "Fine")
+
+        let found = discoverCharacters(builtInDir: builtIn, userDir: user)
+
+        #expect(found.map(\.id) == ["user/fine"])
+    }
+
+    @Test func idleGifDirectoryIsNotTreatedAsGIF() throws {
+        let root = try makeTempDir()
+        let dir = try makeCharacter(in: root, folder: "odd", name: "Odd", withIdle: false)
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("idle.gif", isDirectory: true), withIntermediateDirectories: true
+        )
+
+        #expect(throws: CharacterError.missingIdle) {
+            try loadCharacter(at: dir, idPrefix: "user")
+        }
+    }
+
+    @Test func uppercaseGifExtensionIsAccepted() throws {
+        let root = try makeTempDir()
+        let dir = try makeCharacter(in: root, folder: "caps", name: "Caps", withIdle: false)
+        try writeGIF(to: dir.appendingPathComponent("idle.GIF"))
+
+        let character = try loadCharacter(at: dir, idPrefix: "user")
+
+        #expect(character.animation(for: .idle) == .gif(dir.appendingPathComponent("idle.GIF")))
     }
 
     @Test func corruptGIFThrowsUnreadable() throws {
