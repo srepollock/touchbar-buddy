@@ -19,24 +19,29 @@ private func processEntry(pid: Int32) -> ProcessEntry? {
 
 private let maxAncestorDepth = 16
 
+public func findClaudeAncestorPID(startingAt pid: Int32) -> Int32? {
+    findClaudeAncestorPID(startingAt: pid) { candidate in
+        processEntry(pid: candidate).map { (parentPID: $0.parentPID, command: $0.name) }
+    }
+}
+
 /// `pid` is the hook's parent (main passes getppid()). Walks up looking for claude/node;
 /// if none is found, falls back to the hook's grandparent, i.e. the parent of `pid`.
-public func findClaudeAncestorPID(startingAt pid: Int32) -> Int32? {
+func findClaudeAncestorPID(
+    startingAt pid: Int32,
+    entry: (Int32) -> (parentPID: Int32, command: String)?
+) -> Int32? {
     var current = pid
     var visited = 0
     while current > 1, visited < maxAncestorDepth {
-        guard let entry = processEntry(pid: current) else { break }
-        if entry.name == "claude" || entry.name == "node" {
+        guard let info = entry(current) else { break }
+        if info.command == "claude" || info.command == "node" {
             return current
         }
-        current = entry.parentPID
+        current = info.parentPID
         visited += 1
     }
-    return hookGrandparent(hookParent: pid)
-}
-
-private func hookGrandparent(hookParent pid: Int32) -> Int32? {
-    guard let grandparent = processEntry(pid: pid)?.parentPID, grandparent > 1 else { return nil }
+    guard let grandparent = entry(pid)?.parentPID, grandparent > 1 else { return nil }
     return grandparent
 }
 

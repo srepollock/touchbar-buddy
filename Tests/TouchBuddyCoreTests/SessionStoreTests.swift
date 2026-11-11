@@ -89,12 +89,42 @@ func sampleRecord(id: String = "s1") -> SessionRecord {
     #expect(findClaudeAncestorPID(startingAt: Int32.max - 1) == nil)
 }
 
-@Test func ancestorLookupFallsBackToParentOfStartingPID() {
-    // startingAt is the hook's parent; the fallback is the hook's grandparent = that parent's parent.
-    let result = findClaudeAncestorPID(startingAt: getpid())
-    if let result, result != getppid(), result != getpid() {
-        #expect(result > 1)
+private typealias FakeTable = [Int32: (parentPID: Int32, command: String)]
+
+@Test func ancestorWalkFindsClaudeTwoLevelsUp() {
+    let table: FakeTable = [50: (40, "zsh"), 40: (30, "bash"), 30: (20, "claude"), 20: (1, "login")]
+    #expect(findClaudeAncestorPID(startingAt: 50) { table[$0] } == 30)
+}
+
+@Test func ancestorWalkFindsNode() {
+    let table: FakeTable = [50: (40, "zsh"), 40: (30, "node"), 30: (1, "login")]
+    #expect(findClaudeAncestorPID(startingAt: 50) { table[$0] } == 40)
+}
+
+@Test func ancestorWalkWithNoMatchFallsBackToParentOfStart() {
+    let table: FakeTable = [50: (40, "zsh"), 40: (30, "bash"), 30: (1, "launchd")]
+    #expect(findClaudeAncestorPID(startingAt: 50) { table[$0] } == 40)
+}
+
+@Test func ancestorWalkLookupFailingMidWalkFallsBackToParentOfStart() {
+    let table: FakeTable = [50: (40, "zsh"), 40: (30, "bash")]
+    #expect(findClaudeAncestorPID(startingAt: 50) { table[$0] } == 40)
+}
+
+@Test func ancestorWalkFailingLookupOfStartReturnsNil() {
+    let table: FakeTable = [40: (30, "bash")]
+    #expect(findClaudeAncestorPID(startingAt: 50) { table[$0] } == nil)
+}
+
+@Test func ancestorWalkTerminatesOnCycle() {
+    let table: FakeTable = [50: (40, "zsh"), 40: (50, "bash")]
+    var lookups = 0
+    let result = findClaudeAncestorPID(startingAt: 50) { pid in
+        lookups += 1
+        return table[pid]
     }
+    #expect(result == 40)
+    #expect(lookups <= 20)
 }
 
 @Test func filesAndDirectoryArePrivate() throws {
@@ -105,4 +135,9 @@ func sampleRecord(id: String = "s1") -> SessionRecord {
     let dirAttrs = try FileManager.default.attributesOfItem(atPath: dir.path)
     #expect((fileAttrs[.posixPermissions] as? Int) == 0o600)
     #expect((dirAttrs[.posixPermissions] as? Int) == 0o700)
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path)
+    try store.write(sampleRecord())
+    let tightened = try FileManager.default.attributesOfItem(atPath: dir.path)
+    #expect((tightened[.posixPermissions] as? Int) == 0o700)
 }

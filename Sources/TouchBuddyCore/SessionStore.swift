@@ -56,6 +56,7 @@ public struct SessionStore: Sendable {
             at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         let data = try Self.encoder().encode(record)
         let temp = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
         do {
