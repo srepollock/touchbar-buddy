@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dashboard: DashboardController?
     private var latestSessions: [SessionRecord] = []
     private let frameCache = FrameCache()
+    private let focuser = SessionFocuser()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -33,8 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let dashboard = DashboardController(
             prefs: preferences, frames: frameCache, fallback: fallback,
-            onChipTap: { session in
+            onChipTap: { [weak self] session in
                 logger.info("chip tapped session=\(session.sessionID, privacy: .public)")
+                self?.focuser.focus(session)
+                self?.dashboard?.dismiss()
             }
         )
         self.dashboard = dashboard

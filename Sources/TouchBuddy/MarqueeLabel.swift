@@ -6,6 +6,7 @@ final class MarqueeLabel: NSScrollView {
     static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
     private static let frameInterval: TimeInterval = 1.0 / 30
     private static let userPause: TimeInterval = 3
+    private static let tapQuietPeriod: TimeInterval = 0.4
 
     var onUserScroll: () -> Void = {}
 
@@ -31,6 +32,13 @@ final class MarqueeLabel: NSScrollView {
     private var resyncPending = false
     private var isProgrammaticScroll = false
     private var lastOffset: CGFloat = 0
+    private var isLiveScrolling = false
+    private var lastUserScrollAt = Date.distantPast
+
+    /// True while the user is dragging the bubble or just finished; taps are ignored then.
+    var isUserScrolling: Bool {
+        isLiveScrolling || Date().timeIntervalSince(lastUserScrollAt) < Self.tapQuietPeriod
+    }
 
     static func measure(_ text: String) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: font]).width)
@@ -63,6 +71,14 @@ final class MarqueeLabel: NSScrollView {
         ] {
             center.addObserver(self, selector: #selector(userScrolled), name: name, object: self)
         }
+        center.addObserver(
+            self, selector: #selector(liveScrollStarted), name: NSScrollView.willStartLiveScrollNotification,
+            object: self
+        )
+        center.addObserver(
+            self, selector: #selector(liveScrollEnded), name: NSScrollView.didEndLiveScrollNotification,
+            object: self
+        )
     }
 
     required init?(coder: NSCoder) { nil }
@@ -95,7 +111,12 @@ final class MarqueeLabel: NSScrollView {
         userScrolled()
     }
 
+    @objc private func liveScrollStarted() { isLiveScrolling = true }
+
+    @objc private func liveScrollEnded() { isLiveScrolling = false }
+
     @objc private func userScrolled() {
+        lastUserScrollAt = Date()
         pausedUntil = Date().addingTimeInterval(Self.userPause)
         resyncPending = true
         onUserScroll()

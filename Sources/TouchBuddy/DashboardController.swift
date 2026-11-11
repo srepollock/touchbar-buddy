@@ -167,6 +167,10 @@ final class DashboardController {
         bubbleView.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
         bubbleView.addSubview(marquee)
         marquee.onUserScroll = { [weak self] in self?.userInteracted() }
+        let bubbleTap = NSClickGestureRecognizer(target: self, action: #selector(bubbleTapped(_:)))
+        bubbleTap.allowedTouchTypes = .direct
+        bubbleTap.numberOfClicksRequired = 1
+        marquee.addGestureRecognizer(bubbleTap)
 
         chipsScroll.drawsBackground = false
         chipsScroll.hasHorizontalScroller = false
@@ -194,6 +198,13 @@ final class DashboardController {
 
         bar.defaultItemIdentifiers = [Self.avatarID, Self.bubbleID, Self.chipsID]
         bar.templateItems = [avatarItem, bubbleItem, chipsItem]
+    }
+
+    @objc private func bubbleTapped(_ recognizer: NSClickGestureRecognizer) {
+        guard recognizer.state == .ended, !marquee.isUserScrolling else { return }
+        guard let focus = sessions.first(where: { $0.sessionID == focusID }) ?? sessions.first else { return }
+        logger.info("bubble tapped session=\(focus.sessionID, privacy: .public)")
+        onChipTap(focus)
     }
 
     @discardableResult

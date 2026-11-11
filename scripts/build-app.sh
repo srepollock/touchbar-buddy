@@ -18,11 +18,13 @@ if [ -d "$ROOT/Resources/Characters" ]; then
     cp -R "$ROOT/Resources/Characters" "$APP/Contents/Resources/Characters"
 fi
 
-if security find-identity -p codesigning | grep -qF "\"$IDENTITY\""; then
+IDENTITIES="$(security find-identity -p codesigning)"
+if grep -qF "\"$IDENTITY\"" <<<"$IDENTITIES"; then
     SIGN="$IDENTITY"
 else
     echo "warning: signing identity '$IDENTITY' not found; signing ad-hoc" >&2
     SIGN="-"
 fi
-codesign --force --deep --options runtime --sign "$SIGN" "$APP"
+codesign --force --options runtime --sign "$SIGN" "$APP/Contents/MacOS/touchbuddy-hook"
+codesign --force --options runtime --entitlements "$ROOT/Resources/TouchBuddy.entitlements" --sign "$SIGN" "$APP"
 echo "Built $APP"
