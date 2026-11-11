@@ -47,7 +47,7 @@ Success: the owner never has to cycle through terminal tabs to find the session 
 ## User-facing behaviour (decided with the owner)
 
 ### Resting state
-The Touch Bar looks exactly like today. One TouchBuddy icon sits in the Control Strip. Its colour reflects the most urgent session state:
+The Touch Bar looks exactly like today. One TouchBuddy item sits in the Control Strip, showing the **selected avatar** (animated, in its idle/working/etc. animation for the most urgent state) on a status-coloured ring. The ring colour reflects the most urgent session state (owner request, 2026-11-11):
 
 | State | Colour | Meaning |
 |---|---|---|
@@ -66,6 +66,21 @@ Tapping the Control Strip icon opens the same dashboard with all sessions. ✕ c
 
 ### Session chips
 One chip per session: status dot + project name (basename of the session's cwd), sorted most-urgent first. If they don't fit, the chip area scrolls horizontally. **Tapping a chip focuses that session's iTerm tab** (or activates Claude.app if the session came from the desktop app's Code tab).
+
+### Quick replies from the Touch Bar (owner request, 2026-11-11, in v1)
+When the focused session needs input, the dashboard shows reply buttons next to the speech bubble:
+- **Permission prompt:** all of the prompt's options. These are **Allow**, **Always allow** (Claude Code's "Yes, and don't ask again…" option) and **Deny**.
+- **Multiple-choice question** (`AskUserQuestion`): one button per option label, for a single question with single-select only. Multi-question or multi-select prompts show no reply buttons; the chip opens the tab instead.
+- **Free-text replies are not supported** on the Touch Bar. Tapping the chip opens the tab so the owner can type.
+
+How a reply is sent: TouchBuddy types the matching keystroke into that exact iTerm session via AppleScript `write text … newline NO`, without bringing the tab to the front. Safety rules:
+- Buttons appear only while that session is in needs input, and only when it has a valid iTerm session id. Desktop-app sessions have no reply buttons.
+- Right before sending, TouchBuddy re-reads the session file. If the state is no longer needs input, or the record changed since the buttons were shown (because the owner already answered at the keyboard, for example), nothing is sent and the buttons grey out.
+- Only keystrokes from a fixed whitelist are ever sent. Nothing derived from hook payloads is typed.
+
+The exact keystroke for each option is verified against a live Claude Code prompt during the build. If "Always allow" can't be mapped reliably across tools, it's dropped and the owner is told.
+
+Rejected alternative: answering via Claude Code's `PermissionRequest` hook. It would make Claude Code wait on TouchBuddy before showing the prompt, which breaks the "never slow Claude Code down" anti-goal.
 
 ### Speech
 - Facts first, with character flair. Example: `Psst — touchbar-app wants to run bun test. Your call 👀`
@@ -93,7 +108,7 @@ Event → state mapping:
 |---|---|---|
 | `SessionStart` | idle | record cwd, iTerm session id, PID |
 | `UserPromptSubmit` | working | |
-| `PreToolUse` | working, except `AskUserQuestion` → **needs input** | record tool name / short summary for speech |
+| `PreToolUse` | working, except `AskUserQuestion` → **needs input** | record tool name / short summary for speech; for `AskUserQuestion`, record the question and option labels for quick replies |
 | `PostToolUse` | working | |
 | `Notification` (permission prompt / elicitation) | **needs input** | use the notification message text in speech |
 | `Notification` (idle reminder) | no state change | must not trigger a popup |
