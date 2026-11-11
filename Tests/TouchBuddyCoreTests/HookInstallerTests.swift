@@ -208,3 +208,95 @@ private func ourGroup() -> JSONValue {
     let fallback = HookInstaller.defaultSettingsURL(environment: [:])
     #expect(fallback.path.hasSuffix("/.claude/settings.local.json"))
 }
+
+private func backups(in dir: URL) throws -> [String] {
+    try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        .filter { $0.contains(".touchbuddy-backup-") }.sorted()
+}
+
+private func mode(_ url: URL) throws -> Int {
+    try #require(FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int)
+}
+
+@Test func sameSecondBackupsAreNeverOverwritten() throws {
+    let dir = try makeTempDirectory()
+    let url = dir.appendingPathComponent("settings.local.json")
+    let original = Data(ownerSettings.utf8)
+    try original.write(to: url)
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    try HookInstaller.installFile(at: url, command: ourCommand, now: now)
+    try HookInstaller.uninstallFile(at: url, now: now)
+    let names = try backups(in: dir)
+    #expect(names.count == 2)
+    let first = try #require(names.first { !$0.hasSuffix("-1") })
+    #expect(try Data(contentsOf: dir.appendingPathComponent(first)) == original)
+}
+
+@Test func installKeepsExistingMode() throws {
+    let dir = try makeTempDirectory()
+    let url = dir.appendingPathComponent("settings.local.json")
+    try Data("{}".utf8).write(to: url)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
+    #expect(try mode(url) == 0o600)
+    let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("tmp") }
+    #expect(leftovers.isEmpty)
+}
+
+@Test func newFileIsMode0600() throws {
+    let url = try makeTempDirectory().appendingPathComponent("settings.local.json")
+    try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
+    #expect(try mode(url) == 0o600)
+}
+
+@Test func uninstallFileMissingFileDoesNothing() throws {
+    let dir = try makeTempDirectory()
+    try HookInstaller.uninstallFile(at: dir.appendingPathComponent("settings.local.json"), now: Date())
+    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
+}
+
+@Test func uninstallFileNotInstalledDoesNothing() throws {
+    let dir = try makeTempDirectory()
+    let url = dir.appendingPathComponent("settings.local.json")
+    let bytes = Data("{ \"env\": {\"A\":\"b\"} }".utf8)
+    try bytes.write(to: url)
+    try HookInstaller.uninstallFile(at: url, now: Date())
+    #expect(try Data(contentsOf: url) == bytes)
+    #expect(try backups(in: dir).isEmpty)
+}
+
+@Test func installFileRefusesNonObjectHooks() throws {
+    for json in [#"{ "hooks": [] }"#, #"{ "hooks": { "Stop": {} } }"#] {
+        let dir = try makeTempDirectory()
+        let url = dir.appendingPathComponent("settings.local.json")
+        let bytes = Data(json.utf8)
+        try bytes.write(to: url)
+        #expect(throws: HookInstallerError.notAnObject) {
+            try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
+        }
+        #expect(try Data(contentsOf: url) == bytes)
+        #expect(try backups(in: dir).isEmpty)
+    }
+}
+
+@Test func installFileThroughDanglingSymlinkKeepsLink() throws {
+    let dir = try makeTempDirectory()
+    let target = dir.appendingPathComponent("real.json")
+    let link = dir.appendingPathComponent("settings.local.json")
+    try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "real.json")
+    try HookInstaller.installFile(at: link, command: ourCommand, now: Date())
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == "real.json")
+    let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: target))
+    #expect(HookInstaller.isInstalled(in: written))
+}
+
+@Test func hookCommandEscapesSingleQuotes() throws {
+    let command = HookInstaller.hookCommand(helperPath: "/tmp/it's here/touchbuddy-hook")
+    #expect(command.contains("'/tmp/it'\\''s here/touchbuddy-hook'"))
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", command]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+}

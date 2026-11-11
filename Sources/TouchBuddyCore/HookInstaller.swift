@@ -12,7 +12,8 @@ public enum HookInstaller {
     public static let marker = "touchbuddy-hook"
 
     public static func hookCommand(helperPath: String) -> String {
-        "[ -x '\(helperPath)' ] && '\(helperPath)'; exit 0"
+        let quoted = "'" + helperPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "[ -x \(quoted) ] && \(quoted); exit 0"
     }
 
     public static func defaultSettingsURL(
@@ -73,17 +74,46 @@ public enum HookInstaller {
     // MARK: - File level
 
     public static func installFile(at url: URL, command: String, now: Date) throws {
-        try transformFile(at: url, now: now) { install(into: $0, command: command) }
+        try transformFile(at: url, now: now, validate: validateForInstall) {
+            install(into: $0, command: command)
+        }
     }
 
     public static func uninstallFile(at url: URL, now: Date) throws {
-        try transformFile(at: url, now: now) { uninstall(from: $0) }
+        try transformFile(at: url, now: now, requireInstalled: true) { uninstall(from: $0) }
+    }
+
+    private static func validateForInstall(_ settings: JSONValue) throws {
+        guard case .object(let root) = settings else { throw HookInstallerError.notAnObject }
+        guard let hooksValue = root["hooks"] else { return }
+        guard case .object(let hooks) = hooksValue else { throw HookInstallerError.notAnObject }
+        for event in events {
+            if let value = hooks[event], case .array = value { continue }
+            if hooks[event] != nil { throw HookInstallerError.notAnObject }
+        }
+    }
+
+    private static func resolveTarget(_ url: URL) -> URL {
+        let fileManager = FileManager.default
+        var current = url
+        for _ in 0..<32 {
+            guard let destination = try? fileManager.destinationOfSymbolicLink(atPath: current.path) else {
+                return current
+            }
+            current = URL(
+                fileURLWithPath: destination,
+                relativeTo: current.deletingLastPathComponent()
+            ).standardizedFileURL
+        }
+        return current
     }
 
     private static func transformFile(
-        at url: URL, now: Date, transform: (JSONValue) -> JSONValue
+        at url: URL, now: Date, requireInstalled: Bool = false,
+        validate: (JSONValue) throws -> Void = { _ in },
+        transform: (JSONValue) -> JSONValue
     ) throws {
-        let target = url.resolvingSymlinksInPath()
+        let target = resolveTarget(url)
         let fileManager = FileManager.default
         let exists = fileManager.fileExists(atPath: target.path)
 
@@ -95,31 +125,54 @@ public enum HookInstaller {
             }
             guard case .object = decoded else { throw HookInstallerError.notAnObject }
             current = decoded
-        } else {
-            try fileManager.createDirectory(
-                at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } else if requireInstalled {
+            return
         }
+        try validate(current)
+        if requireInstalled, !isInstalled(in: current) { return }
 
-        let permissions = exists
-            ? (try? fileManager.attributesOfItem(atPath: target.path))?[.posixPermissions]
-            : nil
+        let directory = target.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
+        var mode = 0o600
         if exists {
-            let backup = target.deletingLastPathComponent().appendingPathComponent(
-                "\(target.lastPathComponent).touchbuddy-backup-\(timestamp(now))")
-            if fileManager.fileExists(atPath: backup.path) { try fileManager.removeItem(at: backup) }
-            try fileManager.copyItem(at: target, to: backup)
+            if let existing = (try fileManager.attributesOfItem(atPath: target.path))[.posixPermissions] as? Int {
+                mode = existing
+            }
+            try fileManager.copyItem(at: target, to: uniqueBackupURL(for: target, now: now))
         }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         var output = try encoder.encode(transform(current))
         output.append(0x0A)
-        try output.write(to: target, options: .atomic)
 
-        if let permissions {
-            try fileManager.setAttributes([.posixPermissions: permissions], ofItemAtPath: target.path)
+        let temp = directory.appendingPathComponent(".\(target.lastPathComponent).touchbuddy-tmp-\(UUID().uuidString)")
+        guard fileManager.createFile(atPath: temp.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
         }
+        do {
+            try output.write(to: temp)
+            try fileManager.setAttributes([.posixPermissions: mode], ofItemAtPath: temp.path)
+            guard rename(temp.path, target.path) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        } catch {
+            try? fileManager.removeItem(at: temp)
+            throw error
+        }
+    }
+
+    private static func uniqueBackupURL(for target: URL, now: Date) -> URL {
+        let directory = target.deletingLastPathComponent()
+        let base = "\(target.lastPathComponent).touchbuddy-backup-\(timestamp(now))"
+        var candidate = directory.appendingPathComponent(base)
+        var counter = 1
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base)-\(counter)")
+            counter += 1
+        }
+        return candidate
     }
 
     private static func timestamp(_ date: Date) -> String {
