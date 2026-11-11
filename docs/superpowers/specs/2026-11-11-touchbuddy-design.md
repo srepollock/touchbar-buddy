@@ -88,7 +88,7 @@ Rejected alternative: answering via Claude Code's `PermissionRequest` hook. It w
 - **TTS toggle, off by default.** When on, the line is spoken with macOS speech synthesis on popup.
 
 ### Avatars
-- Ship **4 original, fully animated characters**, each with a looping animation per state (needs input, working, finished, idle). Default is an original Claude-inspired mascot (warm orange, pixel-art style). Concepts for the other three are the builder's call, but they must be original designs (not lookalikes of existing franchises) and visually distinct from each other.
+- Ship **10 original, fully animated characters** (4 initially, plus 6 added at the owner's request on 2026-11-11), each with a looping animation per state (needs input, working, finished, idle). Default is an original Claude-inspired mascot (warm orange, pixel-art style). All must be original designs (not lookalikes of existing franchises) and visually distinct from each other. The owner's favourite is Glitch, so some of the new six share its retro-tech pixel style.
 - Users can add custom characters by dropping a folder into `~/Library/Application Support/TouchBuddy/Characters/`. Custom characters appear in the picker alongside built-ins.
 - Each character has its own speech templates (personality). A custom character without templates falls back to the default character's lines.
 

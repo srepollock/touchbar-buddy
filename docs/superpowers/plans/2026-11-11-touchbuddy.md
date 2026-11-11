@@ -455,6 +455,32 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
 
 ---
 
+### Task 8b: Six more built-in characters
+
+This is an owner request added mid-build. It extends Task 8 using the same rules, tools and tests.
+
+**Files:**
+- Create: `Sources/sprite-gen/Sprites+Floppy.swift`, `Sprites+Tape.swift`, `Sprites+Ember.swift`, `Sprites+Mug.swift`, `Sprites+Orbit.swift`, `Sprites+Jelly.swift`
+- Modify: `Sources/sprite-gen/main.swift`, so it registers the new characters
+- Generated and committed: `Resources/Characters/{floppy,tape,ember,mug,orbit,jelly}/...`
+- Modify: `Tests/TouchBuddyCoreTests/BuiltInCharactersTests.swift`, so it expects 10 characters
+
+**Characters (designer's call; must be original):**
+- **Floppy:** a floppy-disk critter whose metal shutter slides while it works. Retro-tech, in Glitch's style. Voice: nostalgic and nerdy.
+- **Tape:** a cassette tape with a face whose reels spin while it works. Retro-tech. Voice: laid-back DJ.
+- **Ember:** a small flame spirit that flickers when idle and flares up when it needs input. Voice: fiery and impatient.
+- **Mug:** a coffee mug that steams while it works. Voice: sleepy and caffeinated.
+- **Orbit:** a tiny ringed planet with a moon circling it. Voice: cosmic and wondrous.
+- **Jelly:** a jellyfish that pulses and drifts. Voice: floaty and serene.
+
+The art rules, frame minimums, speech rules (≥3 lines per kind, `{project}` everywhere except `all_clear`, `{detail}` in permission and question lines, ≤60 chars) and the visual self-inspection are all the same as Task 8. Also move the duplicated `confetti()` helper from the `Sprites+*.swift` files into the shared helper file. That was deferred from the Task 8 review.
+
+- [ ] **Step 1: Update the failing test.** Make `allBuiltinsLoad` expect 10 characters, and include the new ids.
+- [ ] **Step 2: Implement and generate.** Run `swift run sprite-gen Resources/Characters`, then `swift test`. Expected: pass.
+- [ ] **Step 3: Commit.** Use the message `feat(characters): add six more original animated characters`.
+
+---
+
 ### Task 9: App shell: watcher, Control Strip icon, status menu, preferences
 
 **Files:**
