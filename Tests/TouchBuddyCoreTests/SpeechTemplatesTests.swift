@@ -83,3 +83,21 @@ private let pickFirst: @Sendable ([String]) -> String? = { $0.first }
     #expect(object == ["all_clear": ["x"]])
     #expect(try JSONDecoder().decode(SpeechTemplates.self, from: data) == templates)
 }
+
+@Test func valuesAreNeverRescanned() {
+    let t = "{project}|{detail}"
+    #expect(renderTemplate(t, values: ["project": "p", "detail": "{project}"]) == "p|{project}")
+    #expect(renderTemplate(t, values: ["project": "{detail}", "detail": "d"]) == "{detail}|d")
+    #expect(renderTemplate("run {detail}", values: ["detail": "awk '{print}'"]) == "run awk '{print}'")
+    #expect(renderTemplate("run {detail}", values: ["detail": "echo ${HOME}"]) == "run echo ${HOME}")
+}
+
+@Test func valuesKeepPunctuationAndWhitespace() {
+    #expect(renderTemplate("run {detail}!", values: ["detail": "cd ."]) == "run cd .!")
+    #expect(renderTemplate("run {detail}.", values: ["detail": "a  b"]) == "run a  b.")
+}
+
+@Test func emptyPlaceholderBeforePunctuationDropsSpace() {
+    #expect(renderTemplate("wants to run {detail}!", values: [:]) == "wants to run!")
+    #expect(renderTemplate("a {tool}, b", values: [:]) == "a, b")
+}

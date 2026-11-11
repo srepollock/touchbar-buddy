@@ -28,15 +28,49 @@ public struct SpeechTemplates: Codable, Equatable, Sendable {
     }
 }
 
+private let placeholderPattern = try? NSRegularExpression(pattern: #"\{([A-Za-z_]+)\}"#)
+private let punctuationAfterGap: Set<Character> = [".", ",", "!", "?"]
+
 public func renderTemplate(_ template: String, values: [String: String]) -> String {
-    var result = template
-    for name in ["project", "tool", "detail"] {
-        result = result.replacingOccurrences(of: "{\(name)}", with: values[name] ?? "")
+    let source = template as NSString
+    let matches = placeholderPattern?.matches(in: template, range: NSRange(location: 0, length: source.length)) ?? []
+
+    var output = ""
+    var endsWithLiteralSpace = false
+
+    func appendLiteral(_ text: String) {
+        var chunk = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        if chunk.hasPrefix(" "), output.isEmpty || endsWithLiteralSpace {
+            chunk.removeFirst()
+        }
+        guard !chunk.isEmpty else { return }
+        output += chunk
+        endsWithLiteralSpace = chunk.hasSuffix(" ")
     }
-    result = result.replacingOccurrences(of: #"\{[A-Za-z_]+\}"#, with: "", options: .regularExpression)
-    result = result.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-    result = result.replacingOccurrences(of: #" +([.,!?])"#, with: "$1", options: .regularExpression)
-    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    var cursor = 0
+    for match in matches {
+        appendLiteral(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))
+        cursor = match.range.location + match.range.length
+
+        let value = values[source.substring(with: match.range(at: 1))] ?? ""
+        if value.isEmpty {
+            if endsWithLiteralSpace, cursor < source.length,
+               let next = source.substring(from: cursor).first, punctuationAfterGap.contains(next) {
+                output.removeLast()
+                endsWithLiteralSpace = false
+            }
+        } else {
+            output += value
+            endsWithLiteralSpace = false
+        }
+    }
+    appendLiteral(source.substring(from: cursor))
+
+    if endsWithLiteralSpace {
+        output.removeLast()
+    }
+    return output
 }
 
 public func speechLine(
@@ -63,6 +97,6 @@ public func speechLine(
     if let candidates, let template = pick(candidates) {
         return renderTemplate(template, values: values)
     }
-    return renderTemplate("{project}: {detail}", values: values)
-        .replacingOccurrences(of: #":$"#, with: "", options: .regularExpression)
+    let detail = session.detail ?? ""
+    return detail.isEmpty ? session.projectName : "\(session.projectName): \(detail)"
 }
