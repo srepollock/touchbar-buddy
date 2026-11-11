@@ -119,3 +119,20 @@ private func rec(
     #expect(priorities == priorities.sorted())
     #expect(ordered.first?.state == .needsInput)
 }
+
+@Test func statusHexMatchesSpec() {
+    #expect(statusHex(.needsInput) == 0xF5A623)
+    #expect(statusHex(.working) == 0x4A90E2)
+    #expect(statusHex(.finished) == 0x7ED321)
+    #expect(statusHex(.idle) == 0x666666)
+    #expect(statusHex(nil) == 0x666666)
+}
+
+@Test func displaySignatureChangesOnDecayAndOrder() {
+    let rs = [rec("a", .finished), rec("b", .working)]
+    let early = displaySignature(rs, now: base.addingTimeInterval(10))
+    let late = displaySignature(rs, now: base.addingTimeInterval(700))
+    #expect(early != late)
+    #expect(displaySignature(rs, now: base.addingTimeInterval(11)) == early)
+    #expect(displaySignature(rs.reversed(), now: base.addingTimeInterval(10)) != early)
+}

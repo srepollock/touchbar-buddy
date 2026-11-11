@@ -48,7 +48,6 @@ private final class StripItemView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    override func touchesBegan(with event: NSEvent) { onTap() }
     override func mouseDown(with event: NSEvent) { onTap() }
 }
 
@@ -58,14 +57,14 @@ final class ControlStripController {
 
     private let item: NSCustomTouchBarItem
     private let view = StripItemView()
-    private var character: CharacterDescriptor
+    private var character: CharacterDescriptor?
     private let fallback: CharacterDescriptor?
     private var frameCache: [String: [AnimationFrame]] = [:]
     private var failedKeys: Set<String> = []
     private var overall: SessionState?
     private var count = 0
 
-    init(character: CharacterDescriptor, fallback: CharacterDescriptor?, onTap: @escaping () -> Void) {
+    init(character: CharacterDescriptor?, fallback: CharacterDescriptor?, onTap: @escaping () -> Void) {
         self.character = character
         self.fallback = fallback
         item = NSCustomTouchBarItem(identifier: NSTouchBarItem.Identifier(Self.identifier))
@@ -84,7 +83,7 @@ final class ControlStripController {
     }
 
     func setCharacter(_ c: CharacterDescriptor) {
-        guard c.id != character.id else { return }
+        guard c.id != character?.id else { return }
         character = c
         render()
     }
@@ -122,8 +121,8 @@ final class ControlStripController {
             view.ring.add(pulse, forKey: "pulse")
         }
 
-        let resolved = frames(for: character, state: state)
-            ?? fallback.flatMap { $0.id == character.id ? nil : frames(for: $0, state: state) }
+        let resolved = character.flatMap { frames(for: $0, state: state) }
+            ?? fallback.flatMap { $0.id == character?.id ? nil : frames(for: $0, state: state) }
         if let resolved {
             view.sprite.isHidden = false
             view.fallbackDot.isHidden = true

@@ -52,8 +52,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
         let characterItem = NSMenuItem(title: "Character", action: nil, keyEquivalent: "")
         let characterMenu = NSMenu()
+        let available = characters()
         let selected = selectedID()
-        for descriptor in characters() {
+        for descriptor in available {
             let item = NSMenuItem(title: descriptor.manifest.displayName, action: #selector(selectCharacter(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = descriptor.id
@@ -97,7 +98,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
         let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        switch SMAppService.mainApp.status {
+        case .enabled: login.state = .on
+        case .requiresApproval:
+            login.state = .mixed
+            login.title = "Launch at Login (approve in System Settings)"
+        default: login.state = .off
+        }
         menu.addItem(login)
 
         menu.addItem(.separator())
@@ -176,9 +183,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func toggleLaunchAtLogin() {
         do {
-            if SMAppService.mainApp.status == .enabled {
+            switch SMAppService.mainApp.status {
+            case .enabled:
                 try SMAppService.mainApp.unregister()
-            } else {
+            case .requiresApproval:
+                SMAppService.openSystemSettingsLoginItems()
+            default:
                 try SMAppService.mainApp.register()
             }
         } catch {

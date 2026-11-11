@@ -23,9 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         available = discoverCharacters(builtInDir: builtInDir, userDir: paths.characters)
         let fallback = available.first { $0.id == "builtin/sparky" }
 
-        guard let character = resolveSelectedCharacter(id: preferences.characterID, available: available) else {
-            logger.error("no characters available at \(builtInDir.path, privacy: .public)")
-            return
+        let character = resolveSelectedCharacter(id: preferences.characterID, available: available)
+        if character == nil {
+            logger.error("no characters available at \(builtInDir.path, privacy: .public); showing plain status dot")
         }
 
         let strip = ControlStripController(character: character, fallback: fallback) {

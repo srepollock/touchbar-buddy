@@ -11,6 +11,7 @@ final class SessionWatcher {
     private let store: SessionStore
     private let directory: URL
     private var previous: [SessionRecord] = []
+    private var lastSignature: [String]?
     private var source: DispatchSourceFileSystemObject?
     private var timer: Timer?
 
@@ -62,9 +63,12 @@ final class SessionWatcher {
             store.delete(sessionID: id)
         }
         let ordered = orderedForDisplay(alive, now: now)
-        let triggers = popupTriggers(old: previous, new: ordered, now: now)
-        let changed = ordered != previous
+        let isFirstTick = lastSignature == nil
+        let triggers = isFirstTick ? [] : popupTriggers(old: previous, new: ordered, now: now)
+        let signature = displaySignature(ordered, now: now)
+        let changed = signature != lastSignature
         previous = ordered
+        lastSignature = signature
         if changed || !triggers.isEmpty {
             onChange(ordered, triggers)
         }

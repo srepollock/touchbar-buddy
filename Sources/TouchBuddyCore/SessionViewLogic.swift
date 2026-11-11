@@ -67,3 +67,7 @@ public func chipTitle(_ projectName: String, maxChars: Int = 18) -> String {
     guard projectName.count > maxChars else { return projectName }
     return String(projectName.prefix(maxChars - 1)) + "…"
 }
+
+public func displaySignature(_ rs: [SessionRecord], now: Date) -> [String] {
+    rs.map { "\($0.sessionID):\(effectiveState($0, now: now).rawValue)" }
+}
