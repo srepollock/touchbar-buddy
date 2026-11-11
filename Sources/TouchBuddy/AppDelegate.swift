@@ -1,48 +1,66 @@
 import AppKit
 import OSLog
 import TouchBarPrivate
+import TouchBuddyCore
 
 private let logger = Logger(subsystem: "ca.spollock.touchbuddy", category: "app")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let stripIdentifier = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.strip")
-    private static let labelIdentifier = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.label")
-
-    private var stripItem: NSCustomTouchBarItem?
-    private var modalBar: NSTouchBar?
-    private var minimizeTask: Task<Void, Never>?
+    private let preferences = Preferences()
+    private let paths = TouchBuddyPaths.resolve()
+    private var available: [CharacterDescriptor] = []
+    private var strip: ControlStripController?
+    private var statusMenu: StatusMenu?
+    private var watcher: SessionWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
         logger.info("TBPPrivateAPIsAvailable: \(TBPPrivateAPIsAvailable(), privacy: .public)")
 
-        let button = NSButton(title: "TB", target: self, action: #selector(stripTapped))
-        button.bezelColor = .systemOrange
-        let item = NSCustomTouchBarItem(identifier: Self.stripIdentifier)
-        item.view = button
-        stripItem = item
+        let builtInDir = Bundle.main.resourceURL?.appendingPathComponent("Characters", isDirectory: true)
+            ?? paths.characters
+        available = discoverCharacters(builtInDir: builtInDir, userDir: paths.characters)
+        let fallback = available.first { $0.id == "builtin/sparky" }
 
-        TBPAddSystemTrayItem(item)
-        TBPSetControlStripPresence(Self.stripIdentifier.rawValue, true)
-    }
-
-    @objc private func stripTapped() {
-        let bar = NSTouchBar()
-        bar.defaultItemIdentifiers = [Self.labelIdentifier]
-        let labelItem = NSCustomTouchBarItem(identifier: Self.labelIdentifier)
-        labelItem.view = NSTextField(labelWithString: "TouchBuddy spike ✅")
-        bar.templateItems = [labelItem]
-        modalBar = bar
-
-        TBPShowCloseBoxWhenFrontMost(true)
-        TBPPresentSystemModal(bar, Self.stripIdentifier.rawValue)
-
-        minimizeTask?.cancel()
-        minimizeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
-            guard !Task.isCancelled, let bar = self?.modalBar else { return }
-            TBPMinimizeSystemModal(bar)
+        guard let character = resolveSelectedCharacter(id: preferences.characterID, available: available) else {
+            logger.error("no characters available at \(builtInDir.path, privacy: .public)")
+            return
         }
+
+        let strip = ControlStripController(character: character, fallback: fallback) {
+            logger.info("strip tapped (dashboard not implemented yet)")
+        }
+        self.strip = strip
+
+        statusMenu = StatusMenu(
+            preferences: preferences,
+            userCharactersDir: paths.characters,
+            settingsURL: HookInstaller.defaultSettingsURL(),
+            helperPath: "/Applications/TouchBuddy.app/Contents/MacOS/touchbuddy-hook",
+            characters: { [weak self] in
+                guard let self else { return [] }
+                self.available = discoverCharacters(builtInDir: builtInDir, userDir: self.paths.characters)
+                return self.available
+            },
+            selectedID: { [weak self] in
+                guard let self else { return nil }
+                return resolveSelectedCharacter(id: self.preferences.characterID, available: self.available)?.id
+            },
+            onCharacterSelected: { [weak strip] descriptor in
+                strip?.setCharacter(descriptor)
+            }
+        )
+
+        let watcher = SessionWatcher(store: SessionStore(directory: paths.sessions), directory: paths.sessions)
+        watcher.onChange = { [weak self] sessions, triggers in
+            let now = Date()
+            let overall = overallState(sessions, now: now)
+            logger.info("sessions=\(sessions.count, privacy: .public) overall=\(overall?.rawValue ?? "none", privacy: .public) triggers=\(triggers.count, privacy: .public)")
+            self?.strip?.update(overall: overall, count: sessions.count)
+            self?.statusMenu?.setOverall(overall)
+        }
+        self.watcher = watcher
+        watcher.start()
     }
 }
