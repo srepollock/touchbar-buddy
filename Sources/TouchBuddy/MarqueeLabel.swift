@@ -2,18 +2,18 @@ import AppKit
 import TouchBuddyCore
 
 @MainActor
-final class MarqueeLabel: NSView {
+final class MarqueeLabel: NSScrollView {
     static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-    private static let gap: CGFloat = 40
     private static let frameInterval: TimeInterval = 1.0 / 30
+    private static let userPause: TimeInterval = 3
+
+    var onUserScroll: () -> Void = {}
 
     var text: String = "" {
         didSet {
             guard text != oldValue else { return }
             textWidth = Self.measure(text)
-            first.stringValue = text
-            second.stringValue = text
-            invalidateIntrinsicContentSize()
+            field.stringValue = text
             relayout()
         }
     }
@@ -23,19 +23,14 @@ final class MarqueeLabel: NSView {
     }
 
     private(set) var textWidth: CGFloat = 0
-    private let first = MarqueeLabel.makeField()
-    private let second = MarqueeLabel.makeField()
+    private let field = NSTextField(labelWithString: "")
+    private let document = NSView()
     private var timer: Timer?
     private var startedAt = Date()
-
-    private static func makeField() -> NSTextField {
-        let field = NSTextField(labelWithString: "")
-        field.font = font
-        field.textColor = .white
-        field.lineBreakMode = .byClipping
-        field.maximumNumberOfLines = 1
-        return field
-    }
+    private var pausedUntil = Date.distantPast
+    private var resyncPending = false
+    private var isProgrammaticScroll = false
+    private var lastOffset: CGFloat = 0
 
     static func measure(_ text: String) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: font]).width)
@@ -43,20 +38,37 @@ final class MarqueeLabel: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.masksToBounds = true
-        addSubview(first)
-        addSubview(second)
+        drawsBackground = false
+        hasHorizontalScroller = false
+        hasVerticalScroller = false
+        horizontalScrollElasticity = .allowed
+        verticalScrollElasticity = .none
+
+        field.font = Self.font
+        field.textColor = .white
+        field.lineBreakMode = .byClipping
+        field.maximumNumberOfLines = 1
+        document.addSubview(field)
+        documentView = document
+
+        contentView.postsBoundsChangedNotifications = true
+        let center = NotificationCenter.default
+        center.addObserver(
+            self, selector: #selector(boundsChanged), name: NSView.boundsDidChangeNotification, object: contentView
+        )
+        for name in [
+            NSScrollView.willStartLiveScrollNotification,
+            NSScrollView.didLiveScrollNotification,
+            NSScrollView.didEndLiveScrollNotification,
+        ] {
+            center.addObserver(self, selector: #selector(userScrolled), name: name, object: self)
+        }
     }
 
     required init?(coder: NSCoder) { nil }
 
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: textWidth, height: 30)
-    }
-
-    override func layout() {
-        super.layout()
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
         relayout()
     }
 
@@ -75,23 +87,37 @@ final class MarqueeLabel: NSView {
         updateTimer()
     }
 
-    private var scrolls: Bool { textWidth > bounds.width && bounds.width > 0 }
+    private var scrolls: Bool { textWidth + 2 > bounds.width && bounds.width > 0 }
+    private var maxOffset: CGFloat { max(0, document.frame.width - bounds.width) }
 
-    private func fieldFrame(x: CGFloat) -> NSRect {
-        let height = ceil(Self.font.boundingRectForFont.height)
-        return NSRect(x: x, y: (bounds.height - height) / 2, width: textWidth + 2, height: height)
+    @objc private func boundsChanged() {
+        guard !isProgrammaticScroll, abs(contentView.bounds.origin.x - lastOffset) > 0.5 else { return }
+        userScrolled()
+    }
+
+    @objc private func userScrolled() {
+        pausedUntil = Date().addingTimeInterval(Self.userPause)
+        resyncPending = true
+        onUserScroll()
+    }
+
+    private func setOffset(_ x: CGFloat) {
+        lastOffset = x
+        isProgrammaticScroll = true
+        contentView.scroll(to: NSPoint(x: x, y: 0))
+        reflectScrolledClipView(contentView)
+        isProgrammaticScroll = false
     }
 
     private func relayout() {
+        let height = ceil(Self.font.boundingRectForFont.height)
+        let docWidth = scrolls ? textWidth + 2 : max(bounds.width, 1)
+        document.frame = NSRect(x: 0, y: 0, width: docWidth, height: bounds.height)
+        let x = scrolls ? 0 : max(0, (bounds.width - textWidth) / 2)
+        field.frame = NSRect(x: x, y: (bounds.height - height) / 2, width: textWidth + 2, height: height)
+        setOffset(0)
         startedAt = Date()
-        if scrolls {
-            first.frame = fieldFrame(x: 0)
-            second.frame = fieldFrame(x: textWidth + Self.gap)
-            second.isHidden = false
-        } else {
-            first.frame = fieldFrame(x: max(0, (bounds.width - textWidth) / 2))
-            second.isHidden = true
-        }
+        resyncPending = false
         updateTimer()
     }
 
@@ -107,17 +133,20 @@ final class MarqueeLabel: NSView {
         } else if !shouldRun, let timer {
             timer.invalidate()
             self.timer = nil
-            if scrolls {
-                first.frame = fieldFrame(x: 0)
-                second.frame = fieldFrame(x: textWidth + Self.gap)
-            }
+            setOffset(0)
         }
     }
 
     private func step() {
-        let cycle = Double(textWidth + Self.gap)
-        let offset = CGFloat(marqueeOffset(elapsed: Date().timeIntervalSince(startedAt), cycleLength: cycle))
-        first.frame = fieldFrame(x: -offset)
-        second.frame = fieldFrame(x: textWidth + Self.gap - offset)
+        let now = Date()
+        guard now >= pausedUntil else { return }
+        if resyncPending {
+            resyncPending = false
+            startedAt = now.addingTimeInterval(-marqueeElapsed(forOffset: Double(contentView.bounds.origin.x)))
+        }
+        let offset = marqueeOffset(
+            elapsed: now.timeIntervalSince(startedAt), cycleLength: Double(maxOffset), endPause: 1
+        )
+        setOffset(CGFloat(offset))
     }
 }

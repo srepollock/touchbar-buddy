@@ -35,10 +35,20 @@ public func marqueeOffset(
     elapsed: TimeInterval,
     cycleLength: Double,
     speed: Double = 30,
-    pause: TimeInterval = 1
+    pause: TimeInterval = 1,
+    endPause: TimeInterval = 0
 ) -> Double {
     guard cycleLength > 0, speed > 0 else { return 0 }
-    let period = pause + cycleLength / speed
+    let period = pause + cycleLength / speed + endPause
     let t = elapsed.truncatingRemainder(dividingBy: period)
-    return t < pause ? 0 : (t - pause) * speed
+    return t < pause ? 0 : min((t - pause) * speed, cycleLength)
+}
+
+public func marqueeElapsed(
+    forOffset offset: Double,
+    speed: Double = 30,
+    pause: TimeInterval = 1
+) -> TimeInterval {
+    guard speed > 0 else { return 0 }
+    return pause + max(0, offset) / speed
 }

@@ -15,7 +15,7 @@ private final class StripItemView: NSView {
     override var intrinsicContentSize: NSSize { Self.size }
 
     init(onTap: @escaping () -> Void) {
-        tapButton = TapButton(onTap: onTap)
+        tapButton = TapButton(accessibilityLabel: "TouchBuddy", onTap: onTap)
         super.init(frame: NSRect(origin: .zero, size: Self.size))
         wantsLayer = true
         ring.cornerRadius = Self.size.height / 2

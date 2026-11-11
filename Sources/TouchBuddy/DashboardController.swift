@@ -52,6 +52,10 @@ final class DashboardController {
     private var character: CharacterDescriptor?
     private var isPresented = false
     private var pinned = false
+    private var sawVisible = false
+    private var visibilityObservation: NSKeyValueObservation?
+    private var isProgrammaticChipScroll = false
+    private var lastChipOffset: CGFloat = 0
     private var dismissTimer: Timer?
     private var lastSpeechKey: SpeechKey?
     private var lastSpeechCharacterID: String?
@@ -67,6 +71,9 @@ final class DashboardController {
         self.onChipTap = onChipTap
         TBPShowCloseBoxWhenFrontMost(true)
         buildBar()
+        visibilityObservation = bar.observe(\.isVisible, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in self?.visibilityChanged() }
+        }
     }
 
     func show(
@@ -100,15 +107,37 @@ final class DashboardController {
     }
 
     func dismiss() {
+        let wasPresented = isPresented
+        teardown()
+        if wasPresented {
+            TBPMinimizeSystemModal(bar)
+            logger.info("minimized dashboard")
+        }
+    }
+
+    private func teardown() {
         cancelDismissTimer()
         speaker.stop()
         pinned = false
+        isPresented = false
         marquee.isActive = false
         sprite.stop()
+    }
+
+    private func userInteracted() {
         guard isPresented else { return }
-        isPresented = false
-        TBPMinimizeSystemModal(bar)
-        logger.info("minimized dashboard")
+        pinned = true
+        cancelDismissTimer()
+    }
+
+    private func visibilityChanged() {
+        logger.info("dashboard visible=\(self.bar.isVisible, privacy: .public)")
+        if bar.isVisible {
+            sawVisible = true
+        } else if sawVisible {
+            sawVisible = false
+            teardown()
+        }
     }
 
     private func scheduleDismiss() {
@@ -129,7 +158,7 @@ final class DashboardController {
         avatarView.fixedSize = NSSize(width: 36, height: Self.barHeight)
         sprite.frame = NSRect(x: 3, y: 0, width: 30, height: Self.barHeight)
         avatarView.addSubview(sprite)
-        let avatarButton = TapButton { [weak self] in self?.dismiss() }
+        let avatarButton = TapButton(accessibilityLabel: "Close dashboard") { [weak self] in self?.dismiss() }
         avatarButton.frame = avatarView.bounds
         avatarView.addSubview(avatarButton)
 
@@ -137,15 +166,24 @@ final class DashboardController {
         bubbleView.layer?.cornerRadius = 12
         bubbleView.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
         bubbleView.addSubview(marquee)
-        let bubbleButton = TapButton { [weak self] in self?.dismiss() }
-        bubbleButton.frame = bubbleView.bounds
-        bubbleView.addSubview(bubbleButton)
+        marquee.onUserScroll = { [weak self] in self?.userInteracted() }
 
         chipsScroll.drawsBackground = false
         chipsScroll.hasHorizontalScroller = false
         chipsScroll.hasVerticalScroller = false
         chipsScroll.horizontalScrollElasticity = .allowed
         chipsScroll.verticalScrollElasticity = .none
+        chipsScroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: chipsScroll.contentView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isProgrammaticChipScroll,
+                      abs(self.chipsScroll.contentView.bounds.origin.x - self.lastChipOffset) > 0.5
+                else { return }
+                self.userInteracted()
+            }
+        }
 
         let avatarItem = NSCustomTouchBarItem(identifier: Self.avatarID)
         avatarItem.view = avatarView
@@ -196,7 +234,6 @@ final class DashboardController {
         bubbleWidth = width
         bubbleView.fixedSize = NSSize(width: width, height: Self.barHeight)
         bubbleView.frame = NSRect(x: 0, y: 0, width: width, height: Self.barHeight)
-        bubbleView.subviews.last?.frame = bubbleView.bounds
         bubbleView.invalidateIntrinsicContentSize()
         marquee.frame = NSRect(x: 12, y: 0, width: width - 24, height: Self.barHeight)
         marquee.text = text
@@ -204,6 +241,8 @@ final class DashboardController {
 
     private func layoutChips(now: Date, focusID: String?) {
         let previousOffset = chipsScroll.contentView.bounds.origin.x
+        isProgrammaticChipScroll = true
+        defer { isProgrammaticChipScroll = false }
         let document = NSView()
         var x: CGFloat = 0
         for session in sessions {
@@ -220,7 +259,8 @@ final class DashboardController {
         chipsScroll.frame.size = NSSize(width: chipsScroll.width, height: Self.barHeight)
         chipsScroll.isHidden = sessions.isEmpty
         let maxOffset = max(0, contentWidth - chipsScroll.width)
-        chipsScroll.contentView.scroll(to: NSPoint(x: min(max(0, previousOffset), maxOffset), y: 0))
+        lastChipOffset = min(max(0, previousOffset), maxOffset)
+        chipsScroll.contentView.scroll(to: NSPoint(x: lastChipOffset, y: 0))
         chipsScroll.reflectScrolledClipView(chipsScroll.contentView)
     }
 
@@ -248,7 +288,7 @@ final class DashboardController {
         label.frame.origin = NSPoint(x: 24, y: (Self.barHeight - labelHeight) / 2)
         chip.addSubview(label)
 
-        let button = TapButton { [weak self] in self?.onChipTap(session) }
+        let button = TapButton(accessibilityLabel: session.projectName) { [weak self] in self?.onChipTap(session) }
         button.frame = chip.bounds
         chip.addSubview(button)
         return chip

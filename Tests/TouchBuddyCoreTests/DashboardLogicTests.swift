@@ -44,4 +44,16 @@ private func record(_ id: String = "a", state: SessionState = .needsInput, at: T
         #expect(marqueeOffset(elapsed: 13, cycleLength: 300) == 30)
         #expect(marqueeOffset(elapsed: 5, cycleLength: 0) == 0)
     }
+
+    @Test func marqueeHoldsAtEndBeforeLooping() {
+        // period = 1 + 10 + 1 = 12s
+        #expect(marqueeOffset(elapsed: 11.5, cycleLength: 300, endPause: 1) == 300)
+        #expect(marqueeOffset(elapsed: 12.5, cycleLength: 300, endPause: 1) == 0)
+    }
+
+    @Test func marqueeElapsedResumesFromOffset() {
+        let elapsed = marqueeElapsed(forOffset: 90)
+        #expect(marqueeOffset(elapsed: elapsed, cycleLength: 300) == 90)
+        #expect(marqueeElapsed(forOffset: -5) == 1)
+    }
 }

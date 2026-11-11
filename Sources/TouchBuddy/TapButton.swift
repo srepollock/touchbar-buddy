@@ -4,7 +4,7 @@ import AppKit
 final class TapButton: NSButton {
     private let handler: () -> Void
 
-    init(onTap: @escaping () -> Void) {
+    init(accessibilityLabel: String, onTap: @escaping () -> Void) {
         handler = onTap
         super.init(frame: .zero)
         title = ""
@@ -14,6 +14,7 @@ final class TapButton: NSButton {
         target = self
         action = #selector(fire)
         autoresizingMask = [.width, .height]
+        setAccessibilityLabel(accessibilityLabel)
     }
 
     required init?(coder: NSCoder) { nil }
