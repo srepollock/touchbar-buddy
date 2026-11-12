@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleDashboard(sessions: [SessionRecord], triggers: [SessionRecord]) {
-        if let trigger = triggers.first {
+        if let trigger = triggers.first, dashboard?.isPinnedOpen != true {
             guard let character = currentCharacter() else {
                 logger.error("cannot pop dashboard: no characters available")
                 return

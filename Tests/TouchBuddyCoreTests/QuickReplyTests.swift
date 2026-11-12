@@ -10,12 +10,14 @@ private func record(
     kind: SpeechKind = .permission,
     options: [String]? = nil,
     iterm: String? = "w0t1p0:\(uuid)",
-    updatedAt: Date = t0
+    updatedAt: Date = t0,
+    tool: String? = "Bash",
+    toolUseID: String? = "toolu_1"
 ) -> SessionRecord {
     SessionRecord(
         sessionID: "a", cwd: "/tmp/a", projectName: "a", state: state, speechKind: kind,
-        updatedAt: updatedAt, startedAt: Date(timeIntervalSince1970: 0),
-        itermSessionID: iterm, pendingQuestion: options == nil ? nil : "Q?", pendingOptions: options
+        toolName: tool, updatedAt: updatedAt, startedAt: Date(timeIntervalSince1970: 0), itermSessionID: iterm,
+        pendingQuestion: options == nil ? nil : "Q?", pendingOptions: options, pendingToolUseID: toolUseID
     )
 }
 
@@ -24,8 +26,70 @@ private func record(
         #expect(quickReplies(for: record()) == [.allow, .allowAlways, .deny])
     }
 
+    @Test func editGivesAllowDenyOnly() {
+        #expect(quickReplies(for: record(tool: "Edit")) == [.allow, .deny])
+    }
+
+    @Test func unverifiedToolsGetNoPermissionReplies() {
+        for tool in ["ExitPlanMode", "WebFetch", "mcp__x__y", "Write", nil] {
+            #expect(quickReplies(for: record(tool: tool)).isEmpty)
+        }
+    }
+
+    @Test func noRepliesWithoutToolUseID() {
+        #expect(quickReplies(for: record(toolUseID: nil)).isEmpty)
+        #expect(quickReplies(for: record(kind: .question, options: ["A", "B"], toolUseID: nil)).isEmpty)
+    }
+
+    @Test func choicesCappedAtNine() {
+        let options = (1...12).map { "o\($0)" }
+        #expect(quickReplies(for: record(kind: .question, options: options, tool: "AskUserQuestion")).count == 9)
+    }
+
+    @Test func staleWhenToolUseIDChangedInSameSecond() {
+        #expect(!isReplyStillValid(shownFor: record(), current: record(toolUseID: "toolu_2")))
+    }
+
+    @Test func staleWhenAnyFieldChanged() {
+        #expect(!isReplyStillValid(shownFor: record(), current: record(tool: "Edit")))
+    }
+
+    @Test func footersAreKnownMarkers() {
+        #expect(promptFooters(for: .allow) == [permissionPromptFooter])
+        #expect(promptFooters(for: .deny) == [permissionPromptFooter])
+        #expect(promptFooters(for: .choose(index: 1, label: "x")) == [questionPromptFooter])
+        #expect(knownPromptFooters == ["Tab to amend", "Enter to select"])
+    }
+
+    @Test func writeScriptChecksScreenBeforeTyping() {
+        let script = itermWriteScript(uniqueID: uuid, keystrokes: "1", footers: [permissionPromptFooter])
+        #expect(script.contains("screenText contains \"Tab to amend\""))
+        #expect(!script.contains("Enter to select"))
+        #expect(script.contains("return \"noprompt\""))
+        let contains = script.range(of: "screenText contains")!.lowerBound
+        let write = script.range(of: "write text")!.lowerBound
+        #expect(contains < write)
+    }
+
+    @Test func writeScriptRejectsUnknownFooters() {
+        let script = itermWriteScript(uniqueID: uuid, keystrokes: "1", footers: ["x\" or true or \""])
+        #expect(!script.contains("write text"))
+    }
+
+    @Test func tapsIgnoredWhileSettling() {
+        let built = Date(timeIntervalSince1970: 100)
+        #expect(!isReplyTapAccepted(builtAt: built, now: built.addingTimeInterval(0.2)))
+        #expect(isReplyTapAccepted(builtAt: built, now: built.addingTimeInterval(0.5)))
+    }
+
+    @Test func fullwidthDigitsAndNonAsciiUUIDRejected() {
+        #expect(!itermWriteScript(uniqueID: uuid, keystrokes: "\u{FF11}").contains("write text"))
+        #expect(!isValidITermUUID(String(repeating: "\u{FF10}", count: 36)))
+        #expect(isValidITermUUID(uuid))
+    }
+
     @Test func questionGivesNumberedChoices() {
-        let r = record(kind: .question, options: ["Postgres", "SQLite", "Neither"])
+        let r = record(kind: .question, options: ["Postgres", "SQLite", "Neither"], tool: "AskUserQuestion")
         #expect(quickReplies(for: r) == [
             .choose(index: 1, label: "Postgres"), .choose(index: 2, label: "SQLite"), .choose(index: 3, label: "Neither"),
         ])

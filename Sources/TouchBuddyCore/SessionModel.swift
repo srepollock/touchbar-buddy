@@ -31,6 +31,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     public var entrypoint: String?
     public var pendingQuestion: String?
     public var pendingOptions: [String]?
+    public var pendingToolUseID: String?
 
     public init(
         sessionID: String,
@@ -46,7 +47,8 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         itermSessionID: String? = nil,
         entrypoint: String? = nil,
         pendingQuestion: String? = nil,
-        pendingOptions: [String]? = nil
+        pendingOptions: [String]? = nil,
+        pendingToolUseID: String? = nil
     ) {
         self.sessionID = sessionID
         self.cwd = cwd
@@ -62,5 +64,6 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.entrypoint = entrypoint
         self.pendingQuestion = pendingQuestion
         self.pendingOptions = pendingOptions
+        self.pendingToolUseID = pendingToolUseID
     }
 }

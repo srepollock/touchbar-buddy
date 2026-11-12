@@ -292,3 +292,55 @@ private func askEvent(questions: String) throws -> HookPayload {
     let record = try upserted(reduce(existing: bash, payload: notification, context: context))
     #expect(record.speechKind == .permission)
 }
+
+private func toolEvent(_ name: String, tool: String, id: String?, input: String = "{\"command\": \"touch a.txt\"}") throws -> HookPayload {
+    let idField = id.map { ", \"tool_use_id\": \"\($0)\"" } ?? ""
+    return try event(name, extra: "\"tool_name\": \"\(tool)\"\(idField), \"tool_input\": \(input)")
+}
+
+private let permissionNote = "\"notification_type\": \"permission_prompt\", \"message\": \"Claude needs your permission\""
+
+@Test func preToolUseRecordsToolUseID() throws {
+    let record = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "toolu_9"), context: context))
+    #expect(record.pendingToolUseID == "toolu_9")
+    #expect(record.state == .working)
+}
+
+@Test func permissionNotificationInheritsToolIdentity() throws {
+    let pre = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "toolu_9"), context: context))
+    let note = try upserted(reduce(existing: pre, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.state == .needsInput)
+    #expect(note.speechKind == .permission)
+    #expect(note.toolName == "Bash")
+    #expect(note.detail == "touch a.txt")
+    #expect(note.pendingToolUseID == "toolu_9")
+}
+
+@Test func leavingNeedsInputClearsToolUseID() throws {
+    let pre = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "toolu_9"), context: context))
+    let note = try upserted(reduce(existing: pre, payload: event("Notification", extra: permissionNote), context: context))
+    let post = try upserted(reduce(existing: note, payload: toolEvent("PostToolUse", tool: "Bash", id: "toolu_9"), context: context))
+    #expect(post.pendingToolUseID == nil)
+}
+
+@Test func notificationWithoutPreToolUseHasNoIdentity() throws {
+    let note = try upserted(reduce(existing: existingRecord(), payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.pendingToolUseID == nil)
+    #expect(note.toolName == nil)
+}
+
+@Test func permissionNotificationAfterAskUserQuestionAnsweredIsNotSuppressed() throws {
+    let ask = try askEvent(questions: "[{\"question\": \"Q?\", \"options\": [{\"label\": \"A\"}, {\"label\": \"B\"}]}]")
+    let asked = try upserted(reduce(existing: nil, payload: ask, context: context))
+    let post = try upserted(reduce(existing: asked, payload: event("PostToolUse", extra: "\"tool_name\": \"AskUserQuestion\""), context: context))
+    let note = try upserted(reduce(existing: post, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.state == .needsInput)
+    #expect(note.speechKind == .permission)
+    #expect(note.pendingToolUseID == nil)
+}
+
+@Test func nonStringToolUseIDDoesNotDropEvent() throws {
+    let p = try event("PreToolUse", extra: "\"tool_name\": \"Bash\", \"tool_use_id\": 5")
+    let record = try upserted(reduce(existing: nil, payload: p, context: context))
+    #expect(record.pendingToolUseID == nil)
+}

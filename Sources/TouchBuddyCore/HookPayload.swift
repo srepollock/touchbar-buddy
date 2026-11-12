@@ -78,6 +78,7 @@ public struct HookPayload: Decodable, Sendable {
     public let hookEventName: String
     public let toolName: String?
     public let toolInput: ToolInputSummary?
+    public let toolUseID: String?
     public let message: String?
     public let notificationType: String?
 
@@ -88,6 +89,7 @@ public struct HookPayload: Decodable, Sendable {
         hookEventName = try container.decode(String.self, forKey: .hookEventName)
         toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
         toolInput = try? container.decodeIfPresent(ToolInputSummary.self, forKey: .toolInput)
+        toolUseID = try? container.decodeIfPresent(String.self, forKey: .toolUseID)
         message = try container.decodeIfPresent(String.self, forKey: .message)
         notificationType = try container.decodeIfPresent(String.self, forKey: .notificationType)
     }
@@ -98,6 +100,7 @@ public struct HookPayload: Decodable, Sendable {
         case hookEventName = "hook_event_name"
         case toolName = "tool_name"
         case toolInput = "tool_input"
+        case toolUseID = "tool_use_id"
         case message
         case notificationType = "notification_type"
     }

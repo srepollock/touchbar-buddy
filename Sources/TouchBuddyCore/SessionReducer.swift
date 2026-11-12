@@ -33,13 +33,14 @@ private struct Transition {
     let toolName: String?
     var pendingQuestion: String? = nil
     var pendingOptions: [String]? = nil
+    var pendingToolUseID: String? = nil
 }
 
 public func reduce(existing: SessionRecord?, payload: HookPayload, context: HookContext) -> SessionUpdate {
     if payload.hookEventName == "SessionEnd" {
         return .delete(sessionID: payload.sessionID)
     }
-    guard let transition = transition(for: payload) else {
+    guard var transition = transition(for: payload) else {
         return .unchanged
     }
     // Claude Code fires a generic permission_prompt notification right after PreToolUse AskUserQuestion;
@@ -47,6 +48,15 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
     if payload.hookEventName == "Notification", transition.speechKind == .permission,
        existing?.state == .needsInput, existing?.toolName == "AskUserQuestion" {
         return .unchanged
+    }
+
+    // The notification carries no tool identity; inherit it from the PreToolUse record it belongs to.
+    if payload.hookEventName == "Notification", transition.speechKind == .permission,
+       let existing, let toolUseID = existing.pendingToolUseID {
+        transition = Transition(
+            state: .needsInput, speechKind: .permission, detail: existing.detail ?? transition.detail,
+            toolName: existing.toolName, pendingToolUseID: toolUseID
+        )
     }
 
     let payloadCwd = payload.cwd.flatMap { $0.isEmpty ? nil : $0 }
@@ -72,7 +82,8 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
             itermSessionID: context.itermSessionID ?? existing?.itermSessionID,
             entrypoint: context.entrypoint ?? existing?.entrypoint,
             pendingQuestion: transition.state == .needsInput ? transition.pendingQuestion : nil,
-            pendingOptions: transition.state == .needsInput ? transition.pendingOptions : nil
+            pendingOptions: transition.state == .needsInput ? transition.pendingOptions : nil,
+            pendingToolUseID: transition.pendingToolUseID
         )
     )
 }
@@ -89,10 +100,14 @@ private func transition(for payload: HookPayload) -> Transition? {
             let single = singleSelectQuestion(payload.toolInput)
             return Transition(
                 state: .needsInput, speechKind: .question, detail: summary, toolName: payload.toolName,
-                pendingQuestion: single?.question, pendingOptions: single?.options
+                pendingQuestion: single?.question, pendingOptions: single?.options,
+                pendingToolUseID: payload.toolUseID
             )
         }
-        return Transition(state: .working, speechKind: .working, detail: summary, toolName: payload.toolName)
+        return Transition(
+            state: .working, speechKind: .working, detail: summary, toolName: payload.toolName,
+            pendingToolUseID: payload.toolUseID
+        )
     case "PostToolUse":
         return Transition(
             state: .working, speechKind: .working,

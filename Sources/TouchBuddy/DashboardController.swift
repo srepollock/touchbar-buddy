@@ -80,6 +80,7 @@ final class DashboardController {
     private var replyButtons: [NSButton] = []
     private var replyShownFor: SessionRecord?
     private var repliesWidth: CGFloat = 0
+    private var replyBuiltAt = Date.distantPast
 
     private var sessions: [SessionRecord] = []
     private var focusID: String?
@@ -136,6 +137,9 @@ final class DashboardController {
             }
         }
     }
+
+    /// True while the owner has the dashboard open or has touched it; new popups must not retarget it.
+    var isPinnedOpen: Bool { isPresented && pinned }
 
     func refresh(sessions: [SessionRecord]) {
         guard isPresented, character != nil else { return }
@@ -363,7 +367,7 @@ final class DashboardController {
             return
         }
         if let shown = replyShownFor, shown.sessionID == focus.sessionID {
-            if shown.updatedAt != focus.updatedAt || shown.state != focus.state { disableReplies() }
+            if shown != focus { disableReplies() }
             return
         }
         setReplies(replies, shownFor: focus)
@@ -371,6 +375,7 @@ final class DashboardController {
 
     private func setReplies(_ replies: [QuickReply], shownFor record: SessionRecord?) {
         replyShownFor = record
+        replyBuiltAt = Date()
         replyButtons.forEach { $0.removeFromSuperview() }
         replyButtons = []
         let identifiers = replies.isEmpty
@@ -452,6 +457,10 @@ final class DashboardController {
 
     private func replyTapped(_ reply: QuickReply) {
         guard let shown = replyShownFor else { return }
+        guard isReplyTapAccepted(builtAt: replyBuiltAt, now: Date()) else {
+            logger.info("reply tap ignored: buttons were just rebuilt")
+            return
+        }
         userInteracted()
         logger.info("reply tapped session=\(shown.sessionID, privacy: .public)")
         if onReply(reply, shown) {

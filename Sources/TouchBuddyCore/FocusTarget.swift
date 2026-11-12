@@ -23,7 +23,13 @@ public func focusTarget(for r: SessionRecord) -> FocusTarget {
 }
 
 public func isValidITermUUID(_ value: String) -> Bool {
-    value.wholeMatch(of: /[0-9A-Fa-f-]{36}/) != nil
+    let scalars = value.unicodeScalars
+    return scalars.count == 36 && scalars.allSatisfy { scalar in
+        switch scalar.value {
+        case 0x30...0x39, 0x41...0x46, 0x61...0x66, 0x2D: return true
+        default: return false
+        }
+    }
 }
 
 /// Re-validates `uniqueID` itself; an invalid one yields a script that does nothing.
