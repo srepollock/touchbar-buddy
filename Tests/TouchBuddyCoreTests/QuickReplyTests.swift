@@ -58,17 +58,38 @@ private func record(
         #expect(promptFooters(for: .allow) == [permissionPromptFooter])
         #expect(promptFooters(for: .deny) == [permissionPromptFooter])
         #expect(promptFooters(for: .choose(index: 1, label: "x")) == [questionPromptFooter])
-        #expect(knownPromptFooters == ["Tab to amend", "Enter to select"])
+        #expect(permissionPromptFooter == "Esc to cancel · Tab to amend")
+        #expect(questionPromptFooter == "Enter to select ·")
+        #expect(knownPromptFooters == [permissionPromptFooter, questionPromptFooter])
     }
 
     @Test func writeScriptChecksScreenBeforeTyping() {
         let script = itermWriteScript(uniqueID: uuid, keystrokes: "1", footers: [permissionPromptFooter])
-        #expect(script.contains("screenText contains \"Tab to amend\""))
+        #expect(script.contains("trimmedLine ends with \"Esc to cancel · Tab to amend\""))
         #expect(!script.contains("Enter to select"))
+        #expect(!script.contains("contains \"Tab"))
+        #expect(script.contains("seen is greater than or equal to 3"))
         #expect(script.contains("return \"noprompt\""))
-        let contains = script.range(of: "screenText contains")!.lowerBound
+        let contains = script.range(of: "trimmedLine ends with")!.lowerBound
         let write = script.range(of: "write text")!.lowerBound
         #expect(contains < write)
+    }
+
+    @Test func questionScriptUsesStartsWith() {
+        let script = itermWriteScript(uniqueID: uuid, keystrokes: "2", footers: [questionPromptFooter])
+        #expect(script.contains("trimmedLine starts with \"Enter to select ·\""))
+        #expect(!script.contains("ends with"))
+    }
+
+    @Test func noReplyWhenSeveralToolsInFlight() {
+        var r = record()
+        r.inFlightToolUseIDs = ["toolu_1", "toolu_2"]
+        #expect(quickReplies(for: r).isEmpty)
+        r.inFlightToolUseIDs = ["toolu_1"]
+        #expect(quickReplies(for: r) == [.allow, .allowAlways, .deny])
+        r.inFlightToolUseIDs = ["toolu_1", "toolu_2"]
+        r.permissionRequestConfirmed = true
+        #expect(quickReplies(for: r) == [.allow, .allowAlways, .deny])
     }
 
     @Test func writeScriptRejectsUnknownFooters() {

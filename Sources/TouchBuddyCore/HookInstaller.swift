@@ -7,7 +7,8 @@ public enum HookInstallerError: Error, Equatable {
 
 public enum HookInstaller {
     public static let events = [
-        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd",
+        "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "Stop",
+        "SessionEnd",
     ]
     public static let marker = "touchbuddy-hook"
 

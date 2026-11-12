@@ -11,7 +11,10 @@ public enum QuickReply: Equatable, Sendable {
 private let verifiedPermissionTools: Set<String> = ["Bash", "Edit"]
 
 public func quickReplies(for r: SessionRecord) -> [QuickReply] {
-    guard r.state == .needsInput, r.pendingToolUseID != nil,
+    // With several tool calls in flight the prompt on screen may not be the one recorded, unless a
+    // PermissionRequest named it.
+    let unambiguous = (r.inFlightToolUseIDs?.count ?? 0) <= 1 || r.permissionRequestConfirmed == true
+    guard r.state == .needsInput, r.pendingToolUseID != nil, unambiguous,
           let id = r.itermSessionID, itermUniqueID(from: id) != nil
     else { return [] }
     switch r.speechKind {
@@ -29,9 +32,11 @@ public func quickReplies(for r: SessionRecord) -> [QuickReply] {
     }
 }
 
-/// Footer text Claude Code shows only while a prompt is waiting for a key (absent once answered or while a tool runs).
-public let permissionPromptFooter = "Tab to amend"
-public let questionPromptFooter = "Enter to select"
+/// Exact footer lines Claude Code shows only while a prompt waits for a key. The script matches them against the
+/// last 3 non-empty lines of the screen only (a trimmed line that ends with the permission footer or starts with
+/// the question footer), so the same text in transcript or tool output does not count.
+public let permissionPromptFooter = "Esc to cancel · Tab to amend"
+public let questionPromptFooter = "Enter to select ·"
 public let knownPromptFooters = [permissionPromptFooter, questionPromptFooter]
 
 public func promptFooters(for reply: QuickReply) -> [String] {
@@ -74,8 +79,8 @@ public func isYesNo(_ options: [String]) -> Bool {
     return polarities.contains(true) && polarities.contains(false)
 }
 
-/// Only the UUID, whitelisted keystrokes (a single digit 1-9, or Esc) and known footer markers are ever embedded.
-/// The script types only if the session's visible text still shows one of the footers.
+/// Only the UUID, whitelisted keystrokes (a single digit 1-9, or Esc) and known footer constants are ever embedded.
+/// The script types only if one of the last 3 non-empty screen lines has the footer shape; hook data never enters it.
 public func itermWriteScript(
     uniqueID: String, keystrokes: String, footers: [String] = knownPromptFooters
 ) -> String {
@@ -83,8 +88,25 @@ public func itermWriteScript(
     guard isValidITermUUID(uniqueID), let literal = appleScriptKeyLiteral(keystrokes), !known.isEmpty else {
         return noOpITermScript
     }
-    let condition = known.map { "(screenText contains \"\($0)\")" }.joined(separator: " or ")
+    let condition = known.map { footer -> String in
+        footer == questionPromptFooter
+            ? "(trimmedLine starts with \"\(footer)\")"
+            : "(trimmedLine ends with \"\(footer)\")"
+    }.joined(separator: " or ")
     return """
+    on trimText(t)
+        set ws to {" ", tab, return, linefeed, character id 160}
+        repeat while t is not "" and (first character of t) is in ws
+            if (count of t) is 1 then return ""
+            set t to text 2 thru -1 of t
+        end repeat
+        repeat while t is not "" and (last character of t) is in ws
+            if (count of t) is 1 then return ""
+            set t to text 1 thru -2 of t
+        end repeat
+        return t
+    end trimText
+
     if application "iTerm2" is running then
         with timeout of 3 seconds
             tell application "iTerm2"
@@ -93,11 +115,18 @@ public func itermWriteScript(
                         repeat with s in sessions of t
                             if unique id of s is "\(uniqueID)" then
                                 tell s to set screenText to contents
-                                set lineCount to count of paragraphs of screenText
-                                if lineCount > 40 then
-                                    set screenText to (paragraphs (lineCount - 39) thru lineCount of screenText) as text
-                                end if
-                                if \(condition) then
+                                set screenLines to paragraphs of screenText
+                                set promptShown to false
+                                set seen to 0
+                                repeat with i from (count of screenLines) to 1 by -1
+                                    set trimmedLine to my trimText(item i of screenLines)
+                                    if trimmedLine is not "" then
+                                        set seen to seen + 1
+                                        if \(condition) then set promptShown to true
+                                        if seen is greater than or equal to 3 then exit repeat
+                                    end if
+                                end repeat
+                                if promptShown then
                                     tell s to write text \(literal) newline NO
                                     return "sent"
                                 end if

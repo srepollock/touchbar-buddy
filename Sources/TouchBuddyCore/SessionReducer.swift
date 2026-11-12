@@ -34,6 +34,7 @@ private struct Transition {
     var pendingQuestion: String? = nil
     var pendingOptions: [String]? = nil
     var pendingToolUseID: String? = nil
+    var permissionRequestConfirmed: Bool? = nil
 }
 
 public func reduce(existing: SessionRecord?, payload: HookPayload, context: HookContext) -> SessionUpdate {
@@ -50,13 +51,25 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
         return .unchanged
     }
 
-    // The notification carries no tool identity; inherit it from the PreToolUse record it belongs to.
+    // A PermissionRequest already named the prompt's tool; the follow-up notification adds nothing.
+    if payload.hookEventName == "Notification", transition.speechKind == .permission,
+       existing?.state == .needsInput, existing?.permissionRequestConfirmed == true {
+        return .unchanged
+    }
+
+    // Without a PermissionRequest the notification carries no tool identity; inherit it from the PreToolUse record.
     if payload.hookEventName == "Notification", transition.speechKind == .permission,
        let existing, let toolUseID = existing.pendingToolUseID {
         transition = Transition(
             state: .needsInput, speechKind: .permission, detail: existing.detail ?? transition.detail,
             toolName: existing.toolName, pendingToolUseID: toolUseID
         )
+    }
+
+    // PermissionRequest carries no tool_use_id; the latest PreToolUse id only discriminates prompts,
+    // the tool and command shown come from the request itself.
+    if payload.hookEventName == "PermissionRequest", transition.pendingToolUseID == nil {
+        transition.pendingToolUseID = existing?.pendingToolUseID
     }
 
     let payloadCwd = payload.cwd.flatMap { $0.isEmpty ? nil : $0 }
@@ -83,9 +96,27 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
             entrypoint: context.entrypoint ?? existing?.entrypoint,
             pendingQuestion: transition.state == .needsInput ? transition.pendingQuestion : nil,
             pendingOptions: transition.state == .needsInput ? transition.pendingOptions : nil,
-            pendingToolUseID: transition.pendingToolUseID
+            pendingToolUseID: transition.pendingToolUseID,
+            inFlightToolUseIDs: inFlightIDs(existing: existing, payload: payload),
+            permissionRequestConfirmed: transition.permissionRequestConfirmed
         )
     )
+}
+
+private func inFlightIDs(existing: SessionRecord?, payload: HookPayload) -> [String]? {
+    let current = existing?.inFlightToolUseIDs ?? []
+    let updated: [String]
+    switch payload.hookEventName {
+    case "PreToolUse":
+        updated = payload.toolUseID.map { current.contains($0) ? current : current + [$0] } ?? current
+    case "PostToolUse":
+        updated = payload.toolUseID.map { id in current.filter { $0 != id } } ?? current
+    case "Notification", "PermissionRequest":
+        updated = current
+    default:
+        updated = []
+    }
+    return updated.isEmpty ? nil : updated
 }
 
 private func transition(for payload: HookPayload) -> Transition? {
@@ -116,6 +147,15 @@ private func transition(for payload: HookPayload) -> Transition? {
         )
     case "Notification":
         return notificationTransition(for: payload)
+    case "PermissionRequest":
+        // AskUserQuestion also raises one; the PreToolUse record already carries its options.
+        guard payload.toolName != "AskUserQuestion" else { return nil }
+        return Transition(
+            state: .needsInput, speechKind: .permission,
+            detail: toolSummary(toolName: payload.toolName, input: payload.toolInput),
+            toolName: payload.toolName, pendingToolUseID: payload.toolUseID,
+            permissionRequestConfirmed: true
+        )
     case "Stop":
         return Transition(state: .finished, speechKind: .finished, detail: nil, toolName: nil)
     default:

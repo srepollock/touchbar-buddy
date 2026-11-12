@@ -300,3 +300,11 @@ private func mode(_ url: URL) throws -> Int {
     process.waitUntilExit()
     #expect(process.terminationStatus == 0)
 }
+
+@Test func installRegistersPermissionRequest() {
+    #expect(HookInstaller.events.contains("PermissionRequest"))
+    let result = HookInstaller.install(into: .object([:]), command: ourCommand)
+    #expect(groups(result, "PermissionRequest") == [ourGroup()])
+    let removed = HookInstaller.uninstall(from: result)
+    #expect(groups(removed, "PermissionRequest").isEmpty)
+}

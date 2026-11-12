@@ -344,3 +344,84 @@ private let permissionNote = "\"notification_type\": \"permission_prompt\", \"me
     let record = try upserted(reduce(existing: nil, payload: p, context: context))
     #expect(record.pendingToolUseID == nil)
 }
+
+private func permissionRequest(tool: String, command: String, id: String? = nil) throws -> HookPayload {
+    try toolEvent("PermissionRequest", tool: tool, id: id, input: "{\"command\": \"\(command)\"}")
+}
+
+@Test func preToolUseTracksInFlightAndPostToolUseRemoves() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B"), context: context))
+    #expect(b.inFlightToolUseIDs == ["A", "B"])
+    let doneA = try upserted(reduce(existing: b, payload: toolEvent("PostToolUse", tool: "Bash", id: "A"), context: context))
+    #expect(doneA.inFlightToolUseIDs == ["B"])
+    let doneB = try upserted(reduce(existing: doneA, payload: toolEvent("PostToolUse", tool: "Bash", id: "B"), context: context))
+    #expect(doneB.inFlightToolUseIDs == nil)
+}
+
+@Test func stopPromptSubmitAndSessionStartClearInFlight() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    for name in ["Stop", "UserPromptSubmit", "SessionStart"] {
+        let cleared = try upserted(reduce(existing: a, payload: event(name), context: context))
+        #expect(cleared.inFlightToolUseIDs == nil)
+    }
+}
+
+@Test func notificationKeepsInFlight() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let note = try upserted(reduce(existing: a, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.inFlightToolUseIDs == ["A"])
+}
+
+@Test func permissionRequestIsAuthoritativeIdentity() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
+    let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Edit", command: "ls a"), context: context))
+    #expect(request.state == .needsInput)
+    #expect(request.speechKind == .permission)
+    #expect(request.toolName == "Edit")
+    #expect(request.detail == "ls a")
+    #expect(request.permissionRequestConfirmed == true)
+    #expect(request.pendingToolUseID == "B")
+    #expect(request.inFlightToolUseIDs == ["A", "B"])
+    #expect(quickReplies(for: withIterm(request)) == [.allow, .deny])
+}
+
+@Test func notificationAfterPermissionRequestIsUnchanged() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "touch a.txt"), context: context))
+    let note = try event("Notification", extra: permissionNote)
+    #expect(reduce(existing: request, payload: note, context: context) == .unchanged)
+}
+
+@Test func nextPromptAfterPostToolUseIsNotConfirmedByStaleFlag() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "x"), context: context))
+    let post = try upserted(reduce(existing: request, payload: toolEvent("PostToolUse", tool: "Bash", id: "A"), context: context))
+    #expect(post.permissionRequestConfirmed == nil)
+}
+
+@Test func permissionRequestForAskUserQuestionIsIgnored() throws {
+    let ask = try askEvent(questions: "[{\"question\": \"Q?\", \"options\": [{\"label\": \"A\"}, {\"label\": \"B\"}]}]")
+    let asked = try upserted(reduce(existing: nil, payload: ask, context: context))
+    let p = try event("PermissionRequest", extra: "\"tool_name\": \"AskUserQuestion\", \"tool_input\": {}")
+    #expect(reduce(existing: asked, payload: p, context: context) == .unchanged)
+}
+
+@Test func oldFileWithoutInFlightFieldsDecodes() throws {
+    let json = """
+    {"sessionID": "s1", "cwd": "/x", "projectName": "x", "state": "idle", "speechKind": "idle",
+     "updatedAt": "2026-11-11T00:00:00Z", "startedAt": "2026-11-11T00:00:00Z", "pendingToolUseID": "t"}
+    """
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+    #expect(record.inFlightToolUseIDs == nil)
+    #expect(record.permissionRequestConfirmed == nil)
+}
+
+private func withIterm(_ record: SessionRecord) -> SessionRecord {
+    var copy = record
+    copy.itermSessionID = "w0t1p0:749C8A37-14BF-4A32-BBE8-805358724574"
+    return copy
+}

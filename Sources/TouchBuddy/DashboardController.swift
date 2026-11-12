@@ -367,7 +367,14 @@ final class DashboardController {
             return
         }
         if let shown = replyShownFor, shown.sessionID == focus.sessionID {
-            if shown != focus { disableReplies() }
+            if shown == focus { return }
+            // A re-notification for the same tool call is still the same prompt: rebuild rather than grey for good.
+            if shown.state == .needsInput, focus.state == .needsInput,
+               let id = shown.pendingToolUseID, id == focus.pendingToolUseID {
+                setReplies(replies, shownFor: focus)
+            } else {
+                disableReplies()
+            }
             return
         }
         setReplies(replies, shownFor: focus)
