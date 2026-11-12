@@ -24,7 +24,7 @@ if [ -d "$ROOT/Resources/Characters" ]; then
     cp -R "$ROOT/Resources/Characters" "$APP/Contents/Resources/Characters"
 fi
 
-IDENTITIES="$(security find-identity -p codesigning)"
+IDENTITIES="$(security find-identity -v -p codesigning)"
 if grep -qF "\"$IDENTITY\"" <<<"$IDENTITIES"; then
     SIGN="$IDENTITY"
 else
@@ -40,7 +40,13 @@ codesign --force --options runtime --entitlements "$ROOT/Resources/TouchBuddy.en
 echo "Built $APP"
 
 if [ "$INSTALL" = 1 ]; then
+    codesign --verify --strict "$APP"
     pkill -x TouchBuddy || true
+    for _ in $(seq 1 15); do
+        pgrep -x TouchBuddy >/dev/null || break
+        sleep 0.2
+    done
+    rm -rf /Applications/TouchBuddy.app
     ditto "$APP" /Applications/TouchBuddy.app
     open /Applications/TouchBuddy.app
     echo "Installed /Applications/TouchBuddy.app"
