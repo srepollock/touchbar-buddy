@@ -141,3 +141,17 @@ private typealias FakeTable = [Int32: (parentPID: Int32, command: String)]
     let tightened = try FileManager.default.attributesOfItem(atPath: dir.path)
     #expect((tightened[.posixPermissions] as? Int) == 0o700)
 }
+
+@Test func symlinkedLockPathIsRefusedAndNeverFollowed() throws {
+    let dir = try makeTempDirectory()
+    let target = dir.appendingPathComponent("created-through-symlink")
+    let lockPath = dir.appendingPathComponent(".s1.lock").path
+    try FileManager.default.createSymbolicLink(atPath: lockPath, withDestinationPath: target.path)
+
+    let store = SessionStore(directory: dir)
+    var ran = false
+    store.withSessionLock(sessionID: "s1") { ran = true }
+
+    #expect(ran)
+    #expect(!FileManager.default.fileExists(atPath: target.path))
+}

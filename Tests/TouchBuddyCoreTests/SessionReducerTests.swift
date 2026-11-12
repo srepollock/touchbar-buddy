@@ -384,13 +384,13 @@ private func permissionRequest(tool: String, command: String, id: String? = nil)
     #expect(quickReplies(for: withIterm(request)) == [.allow, .allowAlways, .deny])
 }
 
-@Test func overlappingPromptsGetNoRepliesAndNoDrift() throws {
+@Test func overlappingPromptsGetNoRepliesButShowTheirOwnLabel() throws {
     let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
     let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
     let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Edit", command: "other"), context: context))
     #expect(request.state == .needsInput)
-    #expect(request.toolName == "Bash")
-    #expect(request.detail == "ls b")
+    #expect(request.toolName == "Edit")
+    #expect(request.detail == "other")
     #expect(request.inFlightToolUseIDs == ["A", "B"])
     #expect(quickReplies(for: withIterm(request)).isEmpty)
     let note = try upserted(reduce(existing: request, payload: event("Notification", extra: permissionNote), context: context))
@@ -429,4 +429,24 @@ private func withIterm(_ record: SessionRecord) -> SessionRecord {
     var copy = record
     copy.itermSessionID = "w0t1p0:749C8A37-14BF-4A32-BBE8-805358724574"
     return copy
+}
+
+@Test func postToolUseFailureRemovesThatCallFromInFlight() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B"), context: context))
+    let failedA = try upserted(reduce(existing: b, payload: toolEvent("PostToolUseFailure", tool: "Bash", id: "A"), context: context))
+    #expect(failedA.inFlightToolUseIDs == ["B"])
+    let failedB = try upserted(reduce(existing: failedA, payload: toolEvent("PostToolUseFailure", tool: "Bash", id: "B"), context: context))
+    #expect(failedB.inFlightToolUseIDs == nil)
+}
+
+@Test func postToolUseFailureClearsMatchingPendingCall() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
+    let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "touch a.txt"), context: context))
+    #expect(request.pendingToolUseID == "A")
+    let failed = try upserted(reduce(existing: request, payload: toolEvent("PostToolUseFailure", tool: "Bash", id: "A"), context: context))
+    #expect(failed.state == .working)
+    #expect(failed.pendingToolUseID == nil)
+    #expect(failed.inFlightToolUseIDs == nil)
+    #expect(quickReplies(for: withIterm(failed)).isEmpty)
 }

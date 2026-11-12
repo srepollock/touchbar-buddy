@@ -85,9 +85,9 @@ public struct SessionStore: Sendable {
             at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
         )
         let path = directory.appendingPathComponent(".\(clean).lock").path
-        let fd = open(path, O_CREAT | O_RDWR, 0o600)
+        let fd = open(path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else {
-            hookLogger.debug("lock file open failed; proceeding unlocked")
+            hookLogger.debug("lock file open failed (or is a symlink); proceeding unlocked")
             return body()
         }
         defer { close(fd) }

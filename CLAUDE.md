@@ -7,11 +7,18 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 - Test: `swift test`
 - Build app bundle: `scripts/build-app.sh [debug|release]` -> `build/TouchBuddy.app`
 - Run: `open build/TouchBuddy.app`; quit: `pkill -x TouchBuddy`
+- Install: `scripts/make-signing-identity.sh` once (owner runs it; keychain prompts), then `scripts/build-app.sh install` = release build + sign + copy to `/Applications/TouchBuddy.app` + relaunch. Install refuses ad-hoc signed builds.
 - Signing: identity `$TOUCHBUDDY_SIGN_IDENTITY` (default "TouchBuddy Local Signing"); falls back to ad-hoc with a warning.
 
 ## Environment
 
 - `TOUCHBUDDY_CHATTY_SECONDS=<n>`: overrides the Chatty mode interval (seconds, +/-30% jitter) for testing ambient strolls.
+
+## Hooks
+
+- Menu "Install Claude Code hooks" writes `~/.claude/settings.local.json` only (never `settings.json`), with a timestamped backup. Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, Notification, Stop, SessionEnd. "Update Claude Code hooks" appears when an install predates a newly added event.
+- Session lock files open with `O_NOFOLLOW`; a symlinked lock path is refused and the hook proceeds unlocked.
+- Quick replies (Allow/Deny/choices) are offered only when exactly one tool call is in flight; with several, the bubble shows the PermissionRequest's own label but no buttons.
 
 ## Layout
 

@@ -59,14 +59,12 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
         )
     }
 
-    // PermissionRequest carries no tool_use_id. It may refresh the tool and command shown only when exactly one
-    // call is in flight (so the prompt can only be that call); otherwise the prompt is flagged but identity is kept.
+    // PermissionRequest carries no tool_use_id, so pendingToolUseID keeps pointing at the PreToolUse record and
+    // quickReplies stays empty unless exactly one call is in flight. The label shown is always the request's own.
     if payload.hookEventName == "PermissionRequest" {
-        let single = existing?.inFlightToolUseIDs?.count == 1
         transition = Transition(
             state: .needsInput, speechKind: .permission,
-            detail: single ? transition.detail : existing?.detail,
-            toolName: single ? transition.toolName : existing?.toolName,
+            detail: transition.detail, toolName: transition.toolName,
             pendingToolUseID: existing?.pendingToolUseID
         )
     }
@@ -107,7 +105,7 @@ private func inFlightIDs(existing: SessionRecord?, payload: HookPayload) -> [Str
     switch payload.hookEventName {
     case "PreToolUse":
         updated = payload.toolUseID.map { current.contains($0) ? current : current + [$0] } ?? current
-    case "PostToolUse":
+    case "PostToolUse", "PostToolUseFailure":
         updated = payload.toolUseID.map { id in current.filter { $0 != id } } ?? current
     case "Notification", "PermissionRequest":
         updated = current
@@ -137,7 +135,7 @@ private func transition(for payload: HookPayload) -> Transition? {
             state: .working, speechKind: .working, detail: summary, toolName: payload.toolName,
             pendingToolUseID: payload.toolUseID
         )
-    case "PostToolUse":
+    case "PostToolUse", "PostToolUseFailure":
         return Transition(
             state: .working, speechKind: .working,
             detail: toolSummary(toolName: payload.toolName, input: payload.toolInput),

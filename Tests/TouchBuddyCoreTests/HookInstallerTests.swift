@@ -309,6 +309,23 @@ private func mode(_ url: URL) throws -> Int {
     #expect(groups(removed, "PermissionRequest").isEmpty)
 }
 
+@Test func installRegistersPostToolUseFailure() {
+    #expect(HookInstaller.events.contains("PostToolUseFailure"))
+    let result = HookInstaller.install(into: .object([:]), command: ourCommand)
+    #expect(groups(result, "PostToolUseFailure") == [ourGroup()])
+}
+
+@Test func missingEventsReportsInstallPredatingPostToolUseFailure() {
+    let full = HookInstaller.install(into: .object([:]), command: ourCommand)
+    guard case .object(var root) = full, case .object(var hooks)? = root["hooks"] else {
+        Issue.record("unexpected shape")
+        return
+    }
+    hooks["PostToolUseFailure"] = nil
+    root["hooks"] = .object(hooks)
+    #expect(HookInstaller.missingEvents(in: .object(root)) == ["PostToolUseFailure"])
+}
+
 @Test func missingEventsReportsOldInstall() {
     let full = HookInstaller.install(into: .object([:]), command: ourCommand)
     #expect(HookInstaller.missingEvents(in: full).isEmpty)
