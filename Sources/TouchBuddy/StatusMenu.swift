@@ -15,6 +15,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private let characters: () -> [CharacterDescriptor]
     private let onCharacterSelected: (CharacterDescriptor) -> Void
     private var selectedID: () -> String?
+    private let onChattyChanged: () -> Void
 
     init(
         preferences: Preferences,
@@ -23,8 +24,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         helperPath: String,
         characters: @escaping () -> [CharacterDescriptor],
         selectedID: @escaping () -> String?,
-        onCharacterSelected: @escaping (CharacterDescriptor) -> Void
+        onCharacterSelected: @escaping (CharacterDescriptor) -> Void,
+        onChattyChanged: @escaping () -> Void
     ) {
+        self.onChattyChanged = onChattyChanged
         self.preferences = preferences
         self.userCharactersDir = userCharactersDir
         self.settingsURL = settingsURL
@@ -68,6 +71,23 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         tts.target = self
         tts.state = preferences.ttsEnabled ? .on : .off
         menu.addItem(tts)
+
+        let chatty = NSMenuItem(title: "Chatty mode", action: #selector(toggleChatty), keyEquivalent: "")
+        chatty.target = self
+        chatty.state = preferences.chattyEnabled ? .on : .off
+        menu.addItem(chatty)
+
+        let chattyIntervalItem = NSMenuItem(title: "Chatty interval", action: nil, keyEquivalent: "")
+        let chattyIntervalMenu = NSMenu()
+        for interval in ChattyInterval.allCases {
+            let item = NSMenuItem(title: "\(interval.rawValue) min", action: #selector(selectChattyInterval(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = interval.rawValue
+            item.state = preferences.chattyInterval == interval ? .on : .off
+            chattyIntervalMenu.addItem(item)
+        }
+        chattyIntervalItem.submenu = chattyIntervalMenu
+        menu.addItem(chattyIntervalItem)
 
         let durationItem = NSMenuItem(title: "Popup duration", action: nil, keyEquivalent: "")
         let durationMenu = NSMenu()
@@ -139,6 +159,17 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func toggleTTS() {
         preferences.ttsEnabled.toggle()
+    }
+
+    @objc private func toggleChatty() {
+        preferences.chattyEnabled.toggle()
+        onChattyChanged()
+    }
+
+    @objc private func selectChattyInterval(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? Int, let interval = ChattyInterval(rawValue: raw) else { return }
+        preferences.chattyInterval = interval
+        onChattyChanged()
     }
 
     @objc private func selectDuration(_ sender: NSMenuItem) {

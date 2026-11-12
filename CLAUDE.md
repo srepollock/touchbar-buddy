@@ -9,6 +9,10 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 - Run: `open build/TouchBuddy.app`; quit: `pkill -x TouchBuddy`
 - Signing: identity `$TOUCHBUDDY_SIGN_IDENTITY` (default "TouchBuddy Local Signing"); falls back to ad-hoc with a warning.
 
+## Environment
+
+- `TOUCHBUDDY_CHATTY_SECONDS=<n>`: overrides the Chatty mode interval (seconds, +/-30% jitter) for testing ambient strolls.
+
 ## Layout
 
 - `Sources/TouchBarPrivate` - ObjC shim over private DFRFoundation / NSTouchBar system-modal APIs (resolved via dlopen/dlsym, no-ops if unavailable)

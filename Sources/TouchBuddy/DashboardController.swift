@@ -47,7 +47,15 @@ private final class ReplyButton: NSButton {
 @MainActor
 final class DashboardController {
     private static let totalWidth: CGFloat = 685
-    private static let reservedWidth: CGFloat = 130
+    private static let avatarSlotWidth: CGFloat = 52
+    private static let spriteSize: CGFloat = 30
+    private static let reservedWidth: CGFloat = 94 + avatarSlotWidth
+    private static let strollLaneWidth: CGFloat = totalWidth - 94 - 6
+    private static let strollSeconds: TimeInterval = 6
+    private static let strollBubbleMaxWidth: CGFloat = 300
+    private static let strollGap: CGFloat = 4
+    private static let paceAmplitude: CGFloat = 8
+    private static let paceQuietSeconds: TimeInterval = 4
     private static let bubbleMaxWidth: CGFloat = 360
     private static let barHeight: CGFloat = 30
 
@@ -95,6 +103,16 @@ final class DashboardController {
     private var lastSpeechKey: SpeechKey?
     private var lastSpeechCharacterID: String?
     private var line: String?
+    private var lineSessionID: String?
+
+    private let strollBubble = SizedView()
+    private let strollMarquee = MarqueeLabel(frame: .zero)
+    private var isStrolling = false
+    private var strollSessionID: String?
+    private var strollStartedAt = Date()
+    private var strollTimer: Timer?
+    private var strollGroupWidth: CGFloat = 0
+    private var paceTimer: Timer?
 
     init(
         prefs: Preferences, frames: FrameCache, fallback: CharacterDescriptor?,
@@ -118,6 +136,7 @@ final class DashboardController {
     ) {
         cancelDismissTimer()
         speaker.stop()
+        endStroll(render: false)
         if !autoDismiss { pinned = true }
         self.sessions = sessions
         self.focusID = focus?.sessionID
@@ -128,6 +147,7 @@ final class DashboardController {
         TBPPresentSystemModal(bar, ControlStripController.identifier)
         isPresented = true
         marquee.isActive = true
+        noteLineChanged()
         logger.info("presented dashboard autoDismiss=\(autoDismiss, privacy: .public) pinned=\(self.pinned, privacy: .public) sessions=\(sessions.count, privacy: .public)")
 
         if autoDismiss {
@@ -141,9 +161,47 @@ final class DashboardController {
     /// True while the owner has the dashboard open or has touched it; new popups must not retarget it.
     var isPinnedOpen: Bool { isPresented && pinned }
 
+    /// True while any dashboard (including an ambient stroll) is up.
+    var isOpen: Bool { isPresented }
+
+    func showAmbient(session: SessionRecord, sessions: [SessionRecord], character: CharacterDescriptor) {
+        guard !isPresented else { return }
+        cancelDismissTimer()
+        speaker.stop()
+        pinned = false
+        self.sessions = sessions
+        focusID = session.sessionID
+        self.character = character
+        replyShownFor = nil
+
+        let fallbackSpeech = fallback?.manifest.speech ?? SpeechTemplates(lines: [:])
+        let text = speechLine(
+            for: session, templates: character.manifest.speech ?? fallbackSpeech,
+            fallback: fallbackSpeech, pick: { $0.randomElement() }
+        )
+        line = text
+        lineSessionID = session.sessionID
+        lastSpeechKey = nil
+        lastSpeechCharacterID = nil
+
+        if let resolved = frames.resolve(character: character, fallback: fallback, state: .working) {
+            sprite.play(resolved.frames, key: resolved.key)
+        } else {
+            sprite.stop()
+        }
+        beginStroll(sessionID: session.sessionID, text: text)
+
+        TBPPresentSystemModal(bar, ControlStripController.identifier)
+        isPresented = true
+        strollMarquee.isActive = true
+        logger.info("presented ambient stroll session=\(session.sessionID, privacy: .public)")
+        scheduleDismiss(after: Self.strollSeconds)
+    }
+
     func refresh(sessions: [SessionRecord]) {
         guard isPresented, character != nil else { return }
         self.sessions = sessions
+        if isStrolling { return }
         render(now: Date())
     }
 
@@ -163,6 +221,9 @@ final class DashboardController {
         isPresented = false
         replyShownFor = nil
         marquee.isActive = false
+        strollMarquee.isActive = false
+        cancelPaceTimer()
+        endStroll(render: false)
         sprite.stop()
     }
 
@@ -170,6 +231,126 @@ final class DashboardController {
         guard isPresented else { return }
         pinned = true
         cancelDismissTimer()
+        if isStrolling { endStroll(render: true) }
+    }
+
+    // MARK: Chatty: stroll, pacing, avatar tap
+
+    private func beginStroll(sessionID: String, text: String) {
+        setReplies([], shownFor: nil)
+        isStrolling = true
+        strollSessionID = sessionID
+        bar.defaultItemIdentifiers = [Self.avatarID]
+
+        let bubbleWidth = min(MarqueeLabel.measure(text) + 24, Self.strollBubbleMaxWidth)
+        strollGroupWidth = Self.spriteSize + Self.strollGap + bubbleWidth
+        strollBubble.frame = NSRect(x: 0, y: 0, width: bubbleWidth, height: Self.barHeight)
+        strollMarquee.frame = NSRect(x: 12, y: 0, width: bubbleWidth - 24, height: Self.barHeight)
+        strollMarquee.text = text
+        avatarView.addSubview(strollBubble)
+
+        avatarView.fixedSize = NSSize(width: Self.strollLaneWidth, height: Self.barHeight)
+        avatarView.frame = NSRect(x: 0, y: 0, width: Self.strollLaneWidth, height: Self.barHeight)
+        avatarView.invalidateIntrinsicContentSize()
+        cancelPaceTimer()
+        sprite.stopPacing()
+
+        strollStartedAt = Date()
+        strollTick()
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.strollTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        strollTimer = timer
+    }
+
+    private func strollTick() {
+        let position = strollPosition(
+            elapsed: Date().timeIntervalSince(strollStartedAt), duration: Self.strollSeconds,
+            laneWidth: Self.strollLaneWidth, spriteWidth: strollGroupWidth
+        )
+        sprite.frame.origin.x = position.x
+        sprite.facingLeft = position.facingLeft
+        strollBubble.frame.origin.x = position.x + Self.spriteSize + Self.strollGap
+    }
+
+    private func endStroll(render shouldRender: Bool) {
+        strollTimer?.invalidate()
+        strollTimer = nil
+        guard isStrolling else { return }
+        isStrolling = false
+        strollSessionID = nil
+        strollMarquee.isActive = false
+        strollBubble.removeFromSuperview()
+        sprite.facingLeft = false
+        avatarView.fixedSize = NSSize(width: Self.avatarSlotWidth, height: Self.barHeight)
+        avatarView.frame = NSRect(x: 0, y: 0, width: Self.avatarSlotWidth, height: Self.barHeight)
+        sprite.frame = Self.spriteSlotFrame
+        avatarView.invalidateIntrinsicContentSize()
+        lastSpeechKey = nil
+        if shouldRender {
+            marquee.isActive = true
+            render(now: Date())
+            noteLineChanged()
+        }
+    }
+
+    private static var spriteSlotFrame: NSRect {
+        NSRect(x: (avatarSlotWidth - spriteSize) / 2, y: 0, width: spriteSize, height: barHeight)
+    }
+
+    /// Restarts the 4 s quiet period after which the avatar paces within its slot.
+    private func noteLineChanged() {
+        cancelPaceTimer()
+        sprite.stopPacing()
+        guard isPresented, !isStrolling else { return }
+        let timer = Timer(timeInterval: Self.paceQuietSeconds, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isPresented, !self.isStrolling else { return }
+                self.sprite.startPacing(amplitude: Self.paceAmplitude)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        paceTimer = timer
+    }
+
+    private func cancelPaceTimer() {
+        paceTimer?.invalidate()
+        paceTimer = nil
+    }
+
+    private func avatarTapped() {
+        userInteracted()
+        guard isPresented, let character else { return }
+        let now = Date()
+        let target = chatterTarget(sessions: sessions, now: now, pick: { $0.randomElement() })
+            ?? sessions.first { $0.sessionID == focusID } ?? sessions.first
+        let fallbackSpeech = fallback?.manifest.speech ?? SpeechTemplates(lines: [:])
+        let text = speechLine(
+            for: target, templates: character.manifest.speech ?? fallbackSpeech,
+            fallback: fallbackSpeech, pick: { $0.randomElement() }
+        )
+        line = text
+        lineSessionID = target?.sessionID
+        layoutBubble(text: text)
+        layoutChips(now: now, focusID: focusID)
+        logger.info("avatar tapped, talking about session=\(target?.sessionID ?? "none", privacy: .public)")
+
+        if let hop = frames.resolve(character: character, fallback: fallback, state: .finished) {
+            sprite.playOnce(hop.frames) { [weak self] in self?.playStateAnimation(now: Date()) }
+        }
+        noteLineChanged()
+    }
+
+    private func playStateAnimation(now: Date) {
+        guard isPresented, !isStrolling, let character else { return }
+        let focus = sessions.first { $0.sessionID == focusID } ?? sessions.first
+        let state = focus.map { effectiveState($0, now: now) } ?? .idle
+        if let resolved = frames.resolve(character: character, fallback: fallback, state: state) {
+            sprite.play(resolved.frames, key: resolved.key)
+        } else {
+            sprite.stop()
+        }
     }
 
     private func visibilityChanged() {
@@ -182,9 +363,9 @@ final class DashboardController {
         }
     }
 
-    private func scheduleDismiss() {
+    private func scheduleDismiss(after seconds: TimeInterval? = nil) {
         cancelDismissTimer()
-        let timer = Timer(timeInterval: prefs.popupSeconds, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: seconds ?? prefs.popupSeconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.dismiss() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -197,10 +378,10 @@ final class DashboardController {
     }
 
     private func buildBar() {
-        avatarView.fixedSize = NSSize(width: 36, height: Self.barHeight)
-        sprite.frame = NSRect(x: 3, y: 0, width: 30, height: Self.barHeight)
+        avatarView.fixedSize = NSSize(width: Self.avatarSlotWidth, height: Self.barHeight)
+        sprite.frame = Self.spriteSlotFrame
         avatarView.addSubview(sprite)
-        let avatarButton = TapButton(accessibilityLabel: "Close dashboard") { [weak self] in self?.dismiss() }
+        let avatarButton = TapButton(accessibilityLabel: "Talk to TouchBuddy") { [weak self] in self?.avatarTapped() }
         avatarButton.frame = avatarView.bounds
         avatarView.addSubview(avatarButton)
 
@@ -209,6 +390,15 @@ final class DashboardController {
         bubbleView.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
         bubbleView.addSubview(marquee)
         marquee.onUserScroll = { [weak self] in self?.userInteracted() }
+        strollBubble.wantsLayer = true
+        strollBubble.layer?.cornerRadius = 12
+        strollBubble.layer?.backgroundColor = NSColor(white: 1, alpha: 0.14).cgColor
+        strollBubble.addSubview(strollMarquee)
+        let strollTap = NSClickGestureRecognizer(target: self, action: #selector(strollBubbleTapped(_:)))
+        strollTap.allowedTouchTypes = .direct
+        strollTap.numberOfClicksRequired = 1
+        strollMarquee.addGestureRecognizer(strollTap)
+
         let bubbleTap = NSClickGestureRecognizer(target: self, action: #selector(bubbleTapped(_:)))
         bubbleTap.allowedTouchTypes = .direct
         bubbleTap.numberOfClicksRequired = 1
@@ -245,9 +435,20 @@ final class DashboardController {
         bar.templateItems = [avatarItem, bubbleItem, repliesItem, chipsItem]
     }
 
+    @objc private func strollBubbleTapped(_ recognizer: NSClickGestureRecognizer) {
+        guard recognizer.state == .ended, let id = strollSessionID,
+              let session = sessions.first(where: { $0.sessionID == id })
+        else { return }
+        logger.info("stroll bubble tapped session=\(id, privacy: .public)")
+        onChipTap(session)
+    }
+
     @objc private func bubbleTapped(_ recognizer: NSClickGestureRecognizer) {
         guard recognizer.state == .ended, !marquee.isUserScrolling else { return }
-        guard let focus = sessions.first(where: { $0.sessionID == focusID }) ?? sessions.first else { return }
+        let target = lineSessionID ?? focusID
+        guard let focus = sessions.first(where: { $0.sessionID == target })
+            ?? sessions.first(where: { $0.sessionID == focusID }) ?? sessions.first
+        else { return }
         logger.info("bubble tapped session=\(focus.sessionID, privacy: .public)")
         onChipTap(focus)
     }
@@ -277,6 +478,8 @@ final class DashboardController {
             )
             lastSpeechKey = key
             lastSpeechCharacterID = character.id
+            lineSessionID = nil
+            noteLineChanged()
         }
         layoutReplies(for: focus)
         layoutBubble(text: line ?? "")

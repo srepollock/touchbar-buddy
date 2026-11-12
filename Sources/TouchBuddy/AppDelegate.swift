@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenu?
     private var watcher: SessionWatcher?
     private var dashboard: DashboardController?
+    private var ambient: AmbientScheduler?
     private var latestSessions: [SessionRecord] = []
     private let frameCache = FrameCache()
     private let focuser = SessionFocuser()
@@ -67,8 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onCharacterSelected: { [weak strip] descriptor in
                 strip?.setCharacter(descriptor)
-            }
+            },
+            onChattyChanged: { [weak self] in self?.ambient?.reschedule() }
         )
+
+        let ambient = AmbientScheduler(prefs: preferences) { [weak self] in self?.fireAmbient() }
+        self.ambient = ambient
+        ambient.reschedule()
 
         let watcher = SessionWatcher(store: SessionStore(directory: paths.sessions), directory: paths.sessions)
         watcher.onChange = { [weak self] sessions, triggers in
@@ -86,6 +92,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func currentCharacter() -> CharacterDescriptor? {
         resolveSelectedCharacter(id: preferences.characterID, available: available)
+    }
+
+    private func fireAmbient() {
+        let candidate = ambientCandidate(
+            sessions: latestSessions, now: Date(), dashboardOpen: dashboard?.isOpen ?? true,
+            pick: { $0.randomElement() }
+        )
+        guard let candidate, let character = currentCharacter() else {
+            logger.info("ambient check: no candidate")
+            return
+        }
+        dashboard?.showAmbient(session: candidate, sessions: latestSessions, character: character)
     }
 
     private func openDashboardManually() {

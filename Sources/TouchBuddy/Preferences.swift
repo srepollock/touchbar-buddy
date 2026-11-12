@@ -1,4 +1,5 @@
 import Foundation
+import TouchBuddyCore
 
 @MainActor
 final class Preferences {
@@ -6,6 +7,8 @@ final class Preferences {
         static let characterID = "characterID"
         static let ttsEnabled = "ttsEnabled"
         static let popupSeconds = "popupSeconds"
+        static let chattyEnabled = "chattyEnabled"
+        static let chattyInterval = "chattyInterval"
     }
 
     static let popupDurationChoices: [Double] = [4, 8, 15]
@@ -32,5 +35,15 @@ final class Preferences {
             return stored > 0 ? stored : 8
         }
         set { defaults.set(newValue, forKey: Key.popupSeconds) }
+    }
+
+    var chattyEnabled: Bool {
+        get { defaults.object(forKey: Key.chattyEnabled) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.chattyEnabled) }
+    }
+
+    var chattyInterval: ChattyInterval {
+        get { ChattyInterval(rawValue: defaults.integer(forKey: Key.chattyInterval)) ?? .fifteen }
+        set { defaults.set(newValue.rawValue, forKey: Key.chattyInterval) }
     }
 }
