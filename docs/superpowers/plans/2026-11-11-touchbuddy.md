@@ -671,6 +671,48 @@ Owner request added mid-build. See the spec section "Quick replies from the Touc
 
 ---
 
+### Task 12b: Chatty mode (wandering avatar and random updates)
+
+This is an owner request added mid-build. See the spec section "Chatty mode".
+
+**Files:**
+- Create: `Sources/TouchBuddyCore/ChattyMode.swift`, `Tests/TouchBuddyCoreTests/ChattyModeTests.swift`
+- Create: `Sources/TouchBuddy/AmbientScheduler.swift`
+- Modify: `Sources/TouchBuddy/DashboardController.swift`, `SpriteView.swift`, `Preferences.swift`, `StatusMenu.swift`, `AppDelegate.swift`
+
+**Interfaces:**
+- Produces (Core, pure):
+  ```swift
+  public enum ChattyInterval: Int, CaseIterable, Sendable { case five = 5, fifteen = 15, thirty = 30 }
+  public func nextAmbientDelay(interval: ChattyInterval, random: Double) -> TimeInterval
+     // minutes*60 * (0.7 + 0.6*random), where random is in 0..<1
+  public func ambientCandidate(sessions: [SessionRecord], now: Date, dashboardOpen: Bool, pick: ([SessionRecord]) -> SessionRecord?) -> SessionRecord?
+     // nil if dashboardOpen, or if any effective needsInput, or if there are no effective .working sessions; else pick among the working ones
+  public func strollPosition(elapsed: TimeInterval, duration: TimeInterval, laneWidth: CGFloat, spriteWidth: CGFloat) -> (x: CGFloat, facingLeft: Bool)
+     // goes there and back across the lane; facingLeft on the return leg; clamped to 0...laneWidth-spriteWidth
+  ```
+- App:
+  - `Preferences` gains `chattyEnabled: Bool` (default **true**) and `chattyInterval: ChattyInterval` (default `.fifteen`). The menu gets a "Chatty mode" checkbox and an interval submenu.
+  - `AmbientScheduler` (@MainActor) runs a one-shot Timer rescheduled with `nextAmbientDelay`. On fire it asks `ambientCandidate`, and if non-nil calls `DashboardController.showAmbient(session:)`.
+  - `DashboardController.showAmbient(session:)`: a 6 s auto-dismiss stroll layout. The avatar slot widens to the lane; the SpriteView x comes from `strollPosition` on a display-rate timer, mirrored via a layer transform when facingLeft. The bubble follows the sprite. TTS stays off. It reuses pin-on-interaction.
+  - Avatar tap changes: in every dashboard it plays the `finished` animation once (then returns to the state animation) and shows a fresh `speechLine` about a random active session (prefer working, then needs input). It does NOT dismiss; ✕ dismisses. The avatar's TapButton accessibility label becomes "Talk to TouchBuddy".
+  - Idle pacing: while the dashboard is open and no line changed in the last 4 s, the avatar paces ±8 pt within its slot.
+
+**Owner constraints:**
+- Bubble swipe, bubble tap → open chat, chip swipe and chip taps must not regress.
+- Quick-reply buttons and their safety rules from Task 12 must not regress.
+- A needs-input trigger always replaces an ambient stroll, and is never blocked by one.
+
+- [ ] **Step 1: Write the failing Core tests:**
+  - `delayWithinJitterBounds` (random 0 → 0.7×, random 0.999 → about 1.3×);
+  - `noCandidateWhenDashboardOpen`, `noCandidateWhenAnyNeedsInput`, `noCandidateWhenNothingWorking`, `picksAmongWorkingOnly`;
+  - `strollGoesThereAndBack`, `strollClampsToLane`, `strollFacesLeftOnReturn`.
+- [ ] **Step 2: Run the tests, expecting them to fail; implement; run again, expecting them to pass.**
+- [ ] **Step 3: Implement the app wiring.** Build, then relaunch the app. To verify through the logs, temporarily set `TOUCHBUDDY_CHATTY_SECONDS` (an env override of the interval, in seconds; it is allowed to stay in, documented in CLAUDE.md) to 20, and mark demo-a as working. Expect an ambient pop-up within 14–26 s. A needs-input notification sent during the stroll replaces it.
+- [ ] **Step 4: Commit.** Use the message `feat(app): chatty mode with wandering avatar and random updates`.
+
+---
+
 ### Task 13: Signing, install, end-to-end verification
 
 **Files:**

@@ -41,7 +41,7 @@ Success: the owner never has to cycle through terminal tabs to find the session 
 - Breaking, hiding, or replacing the owner's existing Touch Bar controls when the dashboard is not open.
 - Clobbering or reordering the owner's existing Claude Code hooks.
 - Slowing Claude Code down: hook invocations must be near-instant, never block, and always exit 0, even if TouchBuddy isn't running.
-- Popping up for anything that isn't "needs input" (no popups for "finished", tool calls, etc.).
+- Popping up for anything that isn't "needs input" (no popups for "finished", tool calls, etc.), **except** the opt-out Chatty mode ambient pop-ups described below.
 - Ghost sessions that linger forever after a terminal is closed.
 
 ## User-facing behaviour (decided with the owner)
@@ -66,6 +66,18 @@ Tapping the Control Strip icon opens the same dashboard with all sessions. ✕ c
 
 ### Tapping the speech bubble (owner request, 2026-11-11)
 Tapping the speech bubble opens the conversation it refers to (the focus session), exactly like tapping that session's chip. Swiping the bubble still scrolls it; only a tap without a drag opens the chat.
+
+### Chatty mode: wandering avatar and random updates (owner request, 2026-11-11, in v1)
+The owner asked for the avatar to roam the Touch Bar and occasionally tell them what a session is doing. This deliberately relaxes the "only pop up for needs input" rule, behind a setting.
+- **Setting:** "Chatty mode" toggle in the menu, **on** by default (the owner asked for it), with an interval of 5, 15 or 30 minutes (default 15). Each interval gets ±30% random jitter.
+- **Ambient pop-up:** when the interval elapses and at least one session is **working**, pick one working session at random. Show a stroll dashboard for 6 s.
+  - The avatar walks across the app region (left to right, flipped when heading left) in its working animation, with the speech bubble trailing it.
+  - The line comes from the character's existing `working` templates, for example "infra-repo: on it with Bash!".
+  - Skip the pop-up if the dashboard is already open, if a session needs input (the needs-input pop-up always wins), or if nothing is working.
+  - Ambient pop-ups never speak aloud, even with TTS on.
+- **Interactive avatar:** tapping the avatar, in any dashboard, makes it hop (its `finished` animation, once) and say a fresh line about a random active session. **It no longer closes the dashboard; ✕ does.** Tapping the bubble still opens that session's chat.
+- **Idle wander:** while any dashboard is open and the avatar isn't talking, it paces back and forth within its own slot.
+- **Interaction:** touching an ambient pop-up pins it, the same as any dashboard.
 
 ### Session chips
 One chip per session: status dot + project name (basename of the session's cwd), sorted most-urgent first. If they don't fit, the chip area scrolls horizontally. **Tapping a chip focuses that session's iTerm tab** (or activates Claude.app if the session came from the desktop app's Code tab).
