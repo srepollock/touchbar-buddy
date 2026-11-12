@@ -72,6 +72,15 @@ public enum HookInstaller {
         }
     }
 
+    /// Events for which no TouchBuddy hook is registered (an old install lacks newer events).
+    public static func missingEvents(in settings: JSONValue) -> [String] {
+        guard case .object(let root) = settings, case .object(let hooks)? = root["hooks"] else { return events }
+        return events.filter { event in
+            guard case .array(let groups)? = hooks[event] else { return true }
+            return !groups.contains { commands(in: $0).contains { $0.contains(marker) } }
+        }
+    }
+
     // MARK: - File level
 
     public static func installFile(at url: URL, command: String, now: Date) throws {

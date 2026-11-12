@@ -84,9 +84,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let hooksInstalled = Self.hooksInstalled(at: settingsURL)
+        let hooksOutdated = hooksInstalled && Self.hooksOutdated(at: settingsURL)
+        let hookTitle = hooksOutdated
+            ? "Update Claude Code hooks"
+            : (hooksInstalled ? "Uninstall Claude Code hooks" : "Install Claude Code hooks")
         let hookItem = NSMenuItem(
-            title: hooksInstalled ? "Uninstall Claude Code hooks" : "Install Claude Code hooks",
-            action: hooksInstalled ? #selector(uninstallHooks) : #selector(installHooks),
+            title: hookTitle,
+            action: hooksInstalled && !hooksOutdated ? #selector(uninstallHooks) : #selector(installHooks),
             keyEquivalent: ""
         )
         hookItem.target = self
@@ -116,6 +120,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
               let settings = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return false }
         return HookInstaller.isInstalled(in: settings)
+    }
+
+    static func hooksOutdated(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url),
+              let settings = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else { return false }
+        return !HookInstaller.missingEvents(in: settings).isEmpty
     }
 
     @objc private func selectCharacter(_ sender: NSMenuItem) {

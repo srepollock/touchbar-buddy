@@ -373,32 +373,38 @@ private func permissionRequest(tool: String, command: String, id: String? = nil)
     #expect(note.inFlightToolUseIDs == ["A"])
 }
 
-@Test func permissionRequestIsAuthoritativeIdentity() throws {
+@Test func permissionRequestRefreshesDisplayWhenOneCallInFlight() throws {
     let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
-    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
-    let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Edit", command: "ls a"), context: context))
+    let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "ls a --all"), context: context))
     #expect(request.state == .needsInput)
     #expect(request.speechKind == .permission)
-    #expect(request.toolName == "Edit")
-    #expect(request.detail == "ls a")
-    #expect(request.permissionRequestConfirmed == true)
-    #expect(request.pendingToolUseID == "B")
-    #expect(request.inFlightToolUseIDs == ["A", "B"])
-    #expect(quickReplies(for: withIterm(request)) == [.allow, .deny])
+    #expect(request.toolName == "Bash")
+    #expect(request.detail == "ls a --all")
+    #expect(request.pendingToolUseID == "A")
+    #expect(quickReplies(for: withIterm(request)) == [.allow, .allowAlways, .deny])
 }
 
-@Test func notificationAfterPermissionRequestIsUnchanged() throws {
+@Test func overlappingPromptsGetNoRepliesAndNoDrift() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
+    let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Edit", command: "other"), context: context))
+    #expect(request.state == .needsInput)
+    #expect(request.toolName == "Bash")
+    #expect(request.detail == "ls b")
+    #expect(request.inFlightToolUseIDs == ["A", "B"])
+    #expect(quickReplies(for: withIterm(request)).isEmpty)
+    let note = try upserted(reduce(existing: request, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(quickReplies(for: withIterm(note)).isEmpty)
+}
+
+@Test func notificationAfterPermissionRequestKeepsIdentity() throws {
     let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
     let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "touch a.txt"), context: context))
-    let note = try event("Notification", extra: permissionNote)
-    #expect(reduce(existing: request, payload: note, context: context) == .unchanged)
-}
-
-@Test func nextPromptAfterPostToolUseIsNotConfirmedByStaleFlag() throws {
-    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A"), context: context))
-    let request = try upserted(reduce(existing: a, payload: permissionRequest(tool: "Bash", command: "x"), context: context))
-    let post = try upserted(reduce(existing: request, payload: toolEvent("PostToolUse", tool: "Bash", id: "A"), context: context))
-    #expect(post.permissionRequestConfirmed == nil)
+    let note = try upserted(reduce(existing: request, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.toolName == "Bash")
+    #expect(note.detail == "touch a.txt")
+    #expect(note.pendingToolUseID == "A")
+    #expect(note.inFlightToolUseIDs == ["A"])
 }
 
 @Test func permissionRequestForAskUserQuestionIsIgnored() throws {
@@ -417,7 +423,6 @@ private func permissionRequest(tool: String, command: String, id: String? = nil)
     decoder.dateDecodingStrategy = .iso8601
     let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
     #expect(record.inFlightToolUseIDs == nil)
-    #expect(record.permissionRequestConfirmed == nil)
 }
 
 private func withIterm(_ record: SessionRecord) -> SessionRecord {

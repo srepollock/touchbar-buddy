@@ -11,9 +11,8 @@ public enum QuickReply: Equatable, Sendable {
 private let verifiedPermissionTools: Set<String> = ["Bash", "Edit"]
 
 public func quickReplies(for r: SessionRecord) -> [QuickReply] {
-    // With several tool calls in flight the prompt on screen may not be the one recorded, unless a
-    // PermissionRequest named it.
-    let unambiguous = (r.inFlightToolUseIDs?.count ?? 0) <= 1 || r.permissionRequestConfirmed == true
+    // Fail closed: the prompt on screen is only known to be the recorded one when exactly one call is in flight.
+    let unambiguous = r.inFlightToolUseIDs?.count == 1
     guard r.state == .needsInput, r.pendingToolUseID != nil, unambiguous,
           let id = r.itermSessionID, itermUniqueID(from: id) != nil
     else { return [] }

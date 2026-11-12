@@ -34,8 +34,6 @@ public struct SessionRecord: Codable, Equatable, Sendable {
     public var pendingToolUseID: String?
     /// Tool calls with a PreToolUse and no PostToolUse yet; nil means none. Optional so old session files decode.
     public var inFlightToolUseIDs: [String]?
-    /// True when a PermissionRequest hook named the tool behind this prompt (authoritative identity).
-    public var permissionRequestConfirmed: Bool?
 
     public init(
         sessionID: String,
@@ -53,8 +51,7 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         pendingQuestion: String? = nil,
         pendingOptions: [String]? = nil,
         pendingToolUseID: String? = nil,
-        inFlightToolUseIDs: [String]? = nil,
-        permissionRequestConfirmed: Bool? = nil
+        inFlightToolUseIDs: [String]? = nil
     ) {
         self.sessionID = sessionID
         self.cwd = cwd
@@ -72,6 +69,5 @@ public struct SessionRecord: Codable, Equatable, Sendable {
         self.pendingOptions = pendingOptions
         self.pendingToolUseID = pendingToolUseID
         self.inFlightToolUseIDs = inFlightToolUseIDs
-        self.permissionRequestConfirmed = permissionRequestConfirmed
     }
 }

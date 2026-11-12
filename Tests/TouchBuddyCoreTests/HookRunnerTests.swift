@@ -9,7 +9,7 @@ private func run(_ stdin: String, env: [String: String] = [:], store: SessionSto
 }
 
 private func fileCount(_ dir: URL) -> Int {
-    (try? FileManager.default.contentsOfDirectory(atPath: dir.path).count) ?? 0
+    ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { !$0.hasSuffix(".lock") }.count
 }
 
 @Test func emptyStdinReturnsZeroWritesNothing() throws {
@@ -67,4 +67,27 @@ private func fileCount(_ dir: URL) -> Int {
     let store = SessionStore(directory: dir)
     #expect(run("{\"session_id\":\"abc\",\"hook_event_name\":\"Whatever\"}", store: store) == 0)
     #expect(fileCount(dir) == 0)
+}
+
+@Test func concurrentPreToolUseHooksAllLandInFlight() throws {
+    let dir = try makeTempDirectory()
+    let store = SessionStore(directory: dir)
+    let count = 12
+    DispatchQueue.concurrentPerform(iterations: count) { index in
+        let json = "{\"session_id\":\"par\",\"cwd\":\"/tmp/p\",\"hook_event_name\":\"PreToolUse\","
+            + "\"tool_name\":\"Bash\",\"tool_use_id\":\"t\(index)\",\"tool_input\":{\"command\":\"x\"}}"
+        _ = run(json, store: store)
+    }
+    let record = try #require(store.load(sessionID: "par"))
+    #expect(Set(record.inFlightToolUseIDs ?? []) == Set((0..<count).map { "t\($0)" }))
+}
+
+@Test func lockFileIsPrivateAndHidden() throws {
+    let dir = try makeTempDirectory()
+    let store = SessionStore(directory: dir)
+    _ = run("{\"session_id\":\"s1\",\"cwd\":\"/tmp/p\",\"hook_event_name\":\"Stop\"}", store: store)
+    let lock = dir.appendingPathComponent(".s1.lock")
+    let attributes = try FileManager.default.attributesOfItem(atPath: lock.path)
+    #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+    #expect(store.loadAll().count == 1)
 }

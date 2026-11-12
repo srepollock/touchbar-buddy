@@ -308,3 +308,18 @@ private func mode(_ url: URL) throws -> Int {
     let removed = HookInstaller.uninstall(from: result)
     #expect(groups(removed, "PermissionRequest").isEmpty)
 }
+
+@Test func missingEventsReportsOldInstall() {
+    let full = HookInstaller.install(into: .object([:]), command: ourCommand)
+    #expect(HookInstaller.missingEvents(in: full).isEmpty)
+    guard case .object(var root) = full, case .object(var hooks)? = root["hooks"] else {
+        Issue.record("unexpected shape")
+        return
+    }
+    hooks["PermissionRequest"] = nil
+    root["hooks"] = .object(hooks)
+    #expect(HookInstaller.missingEvents(in: .object(root)) == ["PermissionRequest"])
+    #expect(HookInstaller.missingEvents(in: .object([:])) == HookInstaller.events)
+    let updated = HookInstaller.install(into: .object(root), command: ourCommand)
+    #expect(HookInstaller.missingEvents(in: updated).isEmpty)
+}

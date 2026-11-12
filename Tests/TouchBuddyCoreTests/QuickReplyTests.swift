@@ -12,12 +12,14 @@ private func record(
     iterm: String? = "w0t1p0:\(uuid)",
     updatedAt: Date = t0,
     tool: String? = "Bash",
-    toolUseID: String? = "toolu_1"
+    toolUseID: String? = "toolu_1",
+    inFlight: [String]? = ["toolu_1"]
 ) -> SessionRecord {
     SessionRecord(
         sessionID: "a", cwd: "/tmp/a", projectName: "a", state: state, speechKind: kind,
         toolName: tool, updatedAt: updatedAt, startedAt: Date(timeIntervalSince1970: 0), itermSessionID: iterm,
-        pendingQuestion: options == nil ? nil : "Q?", pendingOptions: options, pendingToolUseID: toolUseID
+        pendingQuestion: options == nil ? nil : "Q?", pendingOptions: options, pendingToolUseID: toolUseID,
+        inFlightToolUseIDs: inFlight
     )
 }
 
@@ -81,15 +83,12 @@ private func record(
         #expect(!script.contains("ends with"))
     }
 
-    @Test func noReplyWhenSeveralToolsInFlight() {
-        var r = record()
-        r.inFlightToolUseIDs = ["toolu_1", "toolu_2"]
-        #expect(quickReplies(for: r).isEmpty)
-        r.inFlightToolUseIDs = ["toolu_1"]
-        #expect(quickReplies(for: r) == [.allow, .allowAlways, .deny])
-        r.inFlightToolUseIDs = ["toolu_1", "toolu_2"]
-        r.permissionRequestConfirmed = true
-        #expect(quickReplies(for: r) == [.allow, .allowAlways, .deny])
+    @Test func repliesOnlyWhenExactlyOneToolInFlight() {
+        #expect(quickReplies(for: record(inFlight: ["toolu_1", "toolu_2"])).isEmpty)
+        #expect(quickReplies(for: record(inFlight: nil)).isEmpty)
+        #expect(quickReplies(for: record(inFlight: [])).isEmpty)
+        #expect(quickReplies(for: record(inFlight: ["toolu_1"])) == [.allow, .allowAlways, .deny])
+        #expect(quickReplies(for: record(kind: .question, options: ["A", "B"], tool: "AskUserQuestion", inFlight: ["a", "b"])).isEmpty)
     }
 
     @Test func writeScriptRejectsUnknownFooters() {

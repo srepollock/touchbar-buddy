@@ -77,6 +77,33 @@ public struct SessionStore: Sendable {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// Serialises read-modify-write per session across hook processes. Waits at most ~200 ms, then proceeds
+    /// unlocked so a stuck peer can never hang Claude Code.
+    public func withSessionLock<T>(sessionID: String, _ body: () -> T) -> T {
+        guard let clean = sanitizedSessionID(sessionID) else { return body() }
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        let path = directory.appendingPathComponent(".\(clean).lock").path
+        let fd = open(path, O_CREAT | O_RDWR, 0o600)
+        guard fd >= 0 else {
+            hookLogger.debug("lock file open failed; proceeding unlocked")
+            return body()
+        }
+        defer { close(fd) }
+        var locked = false
+        for _ in 0..<40 {
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+                locked = true
+                break
+            }
+            usleep(5_000)
+        }
+        if !locked { hookLogger.debug("session lock wait timed out; proceeding unlocked") }
+        defer { if locked { flock(fd, LOCK_UN) } }
+        return body()
+    }
+
     private func fileURL(for sessionID: String) -> URL? {
         sanitizedSessionID(sessionID).map { directory.appendingPathComponent("\($0).json") }
     }
@@ -130,17 +157,19 @@ public func runHook(
         entrypoint: environment["CLAUDE_CODE_ENTRYPOINT"],
         now: now
     )
-    switch reduce(existing: store.load(sessionID: payload.sessionID), payload: payload, context: context) {
-    case .upsert(let record):
-        do {
-            try store.write(record)
-        } catch {
-            hookLogger.debug("write failed: \(String(describing: error), privacy: .public)")
+    store.withSessionLock(sessionID: payload.sessionID) {
+        switch reduce(existing: store.load(sessionID: payload.sessionID), payload: payload, context: context) {
+        case .upsert(let record):
+            do {
+                try store.write(record)
+            } catch {
+                hookLogger.debug("write failed: \(String(describing: error), privacy: .public)")
+            }
+        case .delete(let sessionID):
+            store.delete(sessionID: sessionID)
+        case .unchanged:
+            break
         }
-    case .delete(let sessionID):
-        store.delete(sessionID: sessionID)
-    case .unchanged:
-        break
     }
     return 0
 }
