@@ -48,3 +48,13 @@ public func chatterTarget(
     }
     return nil
 }
+
+/// Session an avatar tap talks about. While reply buttons show, it must stay on the prompted focus session.
+public func avatarTapTarget(
+    sessions: [SessionRecord], focusID: String?, repliesShowing: Bool, now: Date,
+    pick: ([SessionRecord]) -> SessionRecord?
+) -> SessionRecord? {
+    let focus = sessions.first { $0.sessionID == focusID } ?? sessions.first
+    if repliesShowing { return focus }
+    return chatterTarget(sessions: sessions, now: now, pick: pick) ?? focus
+}

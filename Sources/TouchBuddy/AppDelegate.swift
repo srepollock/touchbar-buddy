@@ -90,6 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.start()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        ambient?.stop()
+    }
+
     private func currentCharacter() -> CharacterDescriptor? {
         resolveSelectedCharacter(id: preferences.characterID, available: available)
     }

@@ -62,6 +62,20 @@ final class SpriteView: NSView {
         contentLayer.add(animation, forKey: "pace")
     }
 
+    /// Stops pacing by easing back to centre instead of snapping.
+    func settlePacing() {
+        guard contentLayer.animation(forKey: "pace") != nil else { return }
+        let offset = (contentLayer.presentation()?.position.x ?? contentLayer.position.x) - contentLayer.position.x
+        contentLayer.removeAnimation(forKey: "pace")
+        let animation = CABasicAnimation(keyPath: "position.x")
+        animation.fromValue = offset
+        animation.toValue = 0
+        animation.isAdditive = true
+        animation.duration = 0.2
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        contentLayer.add(animation, forKey: "settle")
+    }
+
     func stopPacing() {
         contentLayer.removeAnimation(forKey: "pace")
     }

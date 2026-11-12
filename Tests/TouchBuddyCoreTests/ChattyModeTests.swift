@@ -94,3 +94,13 @@ private func rec(_ id: String, _ state: SessionState) -> SessionRecord {
     #expect(chatterTarget(sessions: Array(all.prefix(2)), now: base, pick: { $0.first })?.sessionID == "f")
     #expect(chatterTarget(sessions: [rec("i", .idle)], now: base, pick: { $0.first }) == nil)
 }
+
+@Test func avatarTapStaysOnFocusWhileRepliesShow() {
+    let all = [rec("n", .needsInput), rec("w", .working)]
+    let withReplies = avatarTapTarget(sessions: all, focusID: "n", repliesShowing: true, now: base, pick: { $0.first })
+    #expect(withReplies?.sessionID == "n")
+    let without = avatarTapTarget(sessions: all, focusID: "n", repliesShowing: false, now: base, pick: { $0.first })
+    #expect(without?.sessionID == "w")
+    let noneActive = avatarTapTarget(sessions: [rec("i", .idle)], focusID: "i", repliesShowing: false, now: base, pick: { $0.first })
+    #expect(noneActive?.sessionID == "i")
+}

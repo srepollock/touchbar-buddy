@@ -113,6 +113,7 @@ final class DashboardController {
     private var strollTimer: Timer?
     private var strollGroupWidth: CGFloat = 0
     private var paceTimer: Timer?
+    private var avatarButton = TapButton(accessibilityLabel: "Talk to TouchBuddy") {}
 
     init(
         prefs: Preferences, frames: FrameCache, fallback: CharacterDescriptor?,
@@ -251,6 +252,7 @@ final class DashboardController {
 
         avatarView.fixedSize = NSSize(width: Self.strollLaneWidth, height: Self.barHeight)
         avatarView.frame = NSRect(x: 0, y: 0, width: Self.strollLaneWidth, height: Self.barHeight)
+        avatarButton.frame = avatarView.bounds
         avatarView.invalidateIntrinsicContentSize()
         cancelPaceTimer()
         sprite.stopPacing()
@@ -286,6 +288,7 @@ final class DashboardController {
         avatarView.fixedSize = NSSize(width: Self.avatarSlotWidth, height: Self.barHeight)
         avatarView.frame = NSRect(x: 0, y: 0, width: Self.avatarSlotWidth, height: Self.barHeight)
         sprite.frame = Self.spriteSlotFrame
+        avatarButton.frame = avatarView.bounds
         avatarView.invalidateIntrinsicContentSize()
         lastSpeechKey = nil
         if shouldRender {
@@ -302,7 +305,7 @@ final class DashboardController {
     /// Restarts the 4 s quiet period after which the avatar paces within its slot.
     private func noteLineChanged() {
         cancelPaceTimer()
-        sprite.stopPacing()
+        sprite.settlePacing()
         guard isPresented, !isStrolling else { return }
         let timer = Timer(timeInterval: Self.paceQuietSeconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -323,8 +326,10 @@ final class DashboardController {
         userInteracted()
         guard isPresented, let character else { return }
         let now = Date()
-        let target = chatterTarget(sessions: sessions, now: now, pick: { $0.randomElement() })
-            ?? sessions.first { $0.sessionID == focusID } ?? sessions.first
+        let target = avatarTapTarget(
+            sessions: sessions, focusID: focusID, repliesShowing: replyShownFor != nil, now: now,
+            pick: { $0.randomElement() }
+        )
         let fallbackSpeech = fallback?.manifest.speech ?? SpeechTemplates(lines: [:])
         let text = speechLine(
             for: target, templates: character.manifest.speech ?? fallbackSpeech,
@@ -381,9 +386,10 @@ final class DashboardController {
         avatarView.fixedSize = NSSize(width: Self.avatarSlotWidth, height: Self.barHeight)
         sprite.frame = Self.spriteSlotFrame
         avatarView.addSubview(sprite)
-        let avatarButton = TapButton(accessibilityLabel: "Talk to TouchBuddy") { [weak self] in self?.avatarTapped() }
+        avatarButton = TapButton(accessibilityLabel: "Talk to TouchBuddy") { [weak self] in self?.avatarTapped() }
         avatarButton.frame = avatarView.bounds
         avatarView.addSubview(avatarButton)
+        strollMarquee.onUserScroll = { [weak self] in self?.userInteracted() }
 
         bubbleView.wantsLayer = true
         bubbleView.layer?.cornerRadius = 12
@@ -445,7 +451,7 @@ final class DashboardController {
 
     @objc private func bubbleTapped(_ recognizer: NSClickGestureRecognizer) {
         guard recognizer.state == .ended, !marquee.isUserScrolling else { return }
-        let target = lineSessionID ?? focusID
+        let target = replyShownFor != nil ? focusID : (lineSessionID ?? focusID)
         guard let focus = sessions.first(where: { $0.sessionID == target })
             ?? sessions.first(where: { $0.sessionID == focusID }) ?? sessions.first
         else { return }
