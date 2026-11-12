@@ -194,3 +194,101 @@ private func existingRecord() -> SessionRecord {
     #expect(fresh.projectName == "unknown")
     #expect(fresh.cwd == "")
 }
+
+private func askEvent(questions: String) throws -> HookPayload {
+    try event(
+        "PreToolUse",
+        extra: "\"tool_name\": \"AskUserQuestion\", \"tool_input\": {\"questions\": \(questions)}"
+    )
+}
+
+@Test func askUserQuestionRecordsOptions() throws {
+    let p = try askEvent(questions: """
+    [{"question": "Which db?", "header": "DB", "multiSelect": false,
+      "options": [{"label": "Postgres", "description": "x"}, {"label": "SQLite", "description": "y"}]}]
+    """)
+    let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+    #expect(record.state == .needsInput)
+    #expect(record.pendingQuestion == "Which db?")
+    #expect(record.pendingOptions == ["Postgres", "SQLite"])
+}
+
+@Test func multiSelectQuestionRecordsNoOptions() throws {
+    let p = try askEvent(questions: """
+    [{"question": "Which?", "multiSelect": true, "options": [{"label": "A"}, {"label": "B"}]}]
+    """)
+    let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+    #expect(record.state == .needsInput)
+    #expect(record.pendingOptions == nil)
+}
+
+@Test func multipleQuestionsRecordNoOptions() throws {
+    let p = try askEvent(questions: """
+    [{"question": "One?", "options": [{"label": "A"}, {"label": "B"}]},
+     {"question": "Two?", "options": [{"label": "C"}, {"label": "D"}]}]
+    """)
+    let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+    #expect(record.pendingQuestion == nil)
+    #expect(record.pendingOptions == nil)
+}
+
+@Test func leavingNeedsInputClearsOptions() throws {
+    let ask = try askEvent(questions: """
+    [{"question": "Which?", "options": [{"label": "A"}, {"label": "B"}]}]
+    """)
+    let asked = try upserted(reduce(existing: existingRecord(), payload: ask, context: context))
+    #expect(asked.pendingOptions == ["A", "B"])
+    let after = try upserted(reduce(existing: asked, payload: event("PostToolUse", extra: "\"tool_name\": \"AskUserQuestion\""), context: context))
+    #expect(after.state == .working)
+    #expect(after.pendingQuestion == nil)
+    #expect(after.pendingOptions == nil)
+}
+
+@Test func permissionNotificationLeavesOptionsNil() throws {
+    let p = try event("Notification", extra: "\"notification_type\": \"permission_prompt\", \"message\": \"Claude needs your permission to use Bash\"")
+    let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+    #expect(record.state == .needsInput)
+    #expect(record.pendingQuestion == nil)
+    #expect(record.pendingOptions == nil)
+}
+
+@Test func mistypedQuestionsStillDecodeEvent() throws {
+    let p = try askEvent(questions: "\"not an array\"")
+    let record = try upserted(reduce(existing: existingRecord(), payload: p, context: context))
+    #expect(record.state == .needsInput)
+    #expect(record.pendingOptions == nil)
+}
+
+@Test func oldSessionFileWithoutNewFieldsDecodes() throws {
+    let json = """
+    {"sessionID": "s1", "cwd": "/x", "projectName": "x", "state": "idle", "speechKind": "idle",
+     "updatedAt": "2026-11-11T00:00:00Z", "startedAt": "2026-11-11T00:00:00Z"}
+    """
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
+    #expect(record.pendingQuestion == nil)
+    #expect(record.pendingOptions == nil)
+}
+
+@Test func permissionNotificationAfterAskUserQuestionKeepsTheQuestion() throws {
+    let ask = try askEvent(questions: """
+    [{"question": "Which?", "options": [{"label": "A"}, {"label": "B"}]}]
+    """)
+    let asked = try upserted(reduce(existing: existingRecord(), payload: ask, context: context))
+    let notification = try event(
+        "Notification", extra: "\"notification_type\": \"permission_prompt\", \"message\": \"Claude needs your permission\""
+    )
+    #expect(reduce(existing: asked, payload: notification, context: context) == .unchanged)
+}
+
+@Test func permissionNotificationAfterBashStillNeedsInput() throws {
+    var bash = existingRecord()
+    bash.state = .working
+    bash.toolName = "Bash"
+    let notification = try event(
+        "Notification", extra: "\"notification_type\": \"permission_prompt\", \"message\": \"Claude needs your permission\""
+    )
+    let record = try upserted(reduce(existing: bash, payload: notification, context: context))
+    #expect(record.speechKind == .permission)
+}

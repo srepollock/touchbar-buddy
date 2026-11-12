@@ -54,4 +54,24 @@ private func record(iterm: String? = nil, entrypoint: String? = nil) -> SessionR
         #expect(itermSelectScript(uniqueID: other) == script.replacingOccurrences(of: uuid, with: other))
         #expect(script.components(separatedBy: uuid).count == 2)
     }
+
+    @Test func selectScriptGuardsRunningTimeoutAndDeminiaturizes() {
+        let script = itermSelectScript(uniqueID: uuid)
+        #expect(script.contains("if application \"iTerm2\" is running then"))
+        #expect(script.contains("with timeout of 3 seconds"))
+        #expect(script.contains("end timeout"))
+        #expect(script.contains("set miniaturized of w to false"))
+        #expect(script.range(of: "set miniaturized of w to false")!.lowerBound < script.range(of: "select w")!.lowerBound)
+        #expect(script.hasSuffix("return \"missing\""))
+    }
+
+    @Test func selectScriptRejectsInvalidUUID() {
+        let script = itermSelectScript(uniqueID: "x\" & do shell script \"y")
+        #expect(!script.contains("do shell script"))
+        #expect(!script.contains("select w"))
+    }
+
+    @Test func nonAsciiDigitsRejected() {
+        #expect(itermUniqueID(from: "w\u{0663}t1p0:\(uuid)") == nil)
+    }
 }

@@ -21,17 +21,7 @@ final class SessionFocuser {
     }
 
     private func selectITermSession(uniqueID: String) -> Bool {
-        guard let script = NSAppleScript(source: itermSelectScript(uniqueID: uniqueID)) else {
-            logger.error("could not compile iTerm script")
-            return false
-        }
-        var error: NSDictionary?
-        let result = script.executeAndReturnError(&error)
-        if let error {
-            logger.error("iTerm script failed: \(String(describing: error), privacy: .public)")
-            return false
-        }
-        let found = result.stringValue == "found"
+        let found = runAppleScript(itermSelectScript(uniqueID: uniqueID)) == "found"
         if !found { logger.info("iTerm session \(uniqueID, privacy: .public) not found") }
         return found
     }
@@ -45,4 +35,20 @@ final class SessionFocuser {
             if let error { logger.error("activate failed: \(error.localizedDescription, privacy: .public)") }
         }
     }
+}
+
+/// Runs on the calling thread; the generated scripts carry their own 3 second timeout.
+@MainActor
+func runAppleScript(_ source: String) -> String? {
+    guard let script = NSAppleScript(source: source) else {
+        logger.error("could not compile AppleScript")
+        return nil
+    }
+    var error: NSDictionary?
+    let result = script.executeAndReturnError(&error)
+    if let error {
+        logger.error("AppleScript failed: \(String(describing: error), privacy: .public)")
+        return nil
+    }
+    return result.stringValue
 }

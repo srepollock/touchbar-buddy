@@ -24,6 +24,27 @@ private final class ChipsScrollView: NSScrollView {
 }
 
 @MainActor
+private final class ReplyButton: NSButton {
+    private let handler: () -> Void
+
+    init(accessibilityLabel: String, onTap: @escaping () -> Void) {
+        handler = onTap
+        super.init(frame: .zero)
+        isBordered = true
+        bezelStyle = .rounded
+        setButtonType(.momentaryPushIn)
+        target = self
+        action = #selector(fire)
+        lineBreakMode = .byTruncatingTail
+        setAccessibilityLabel(accessibilityLabel)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func fire() { handler() }
+}
+
+@MainActor
 final class DashboardController {
     private static let totalWidth: CGFloat = 685
     private static let reservedWidth: CGFloat = 130
@@ -33,11 +54,20 @@ final class DashboardController {
     private static let avatarID = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.dashboard.avatar")
     private static let bubbleID = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.dashboard.bubble")
     private static let chipsID = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.dashboard.chips")
+    private static let repliesID = NSTouchBarItem.Identifier("ca.spollock.touchbuddy.dashboard.replies")
+
+    private static let bubbleMinWidth: CGFloat = 80
+    private static let chipsMinWidth: CGFloat = 120
+    private static let itemSpacing: CGFloat = 8
+    private static let replyGap: CGFloat = 6
+    private static let allowGreen = NSColor(srgbRed: 0x7E / 255, green: 0xD3 / 255, blue: 0x21 / 255, alpha: 1)
+    private static let denyRed = NSColor(srgbRed: 0xE5 / 255, green: 0x48 / 255, blue: 0x4D / 255, alpha: 1)
 
     private let prefs: Preferences
     private let frames: FrameCache
     private let fallback: CharacterDescriptor?
     private let onChipTap: (SessionRecord) -> Void
+    private let onReply: (QuickReply, SessionRecord) -> Bool
     private let speaker = Speaker()
 
     private let bar = NSTouchBar()
@@ -46,6 +76,10 @@ final class DashboardController {
     private let bubbleView = SizedView()
     private let marquee = MarqueeLabel(frame: .zero)
     private let chipsScroll = ChipsScrollView()
+    private let repliesView = SizedView()
+    private var replyButtons: [NSButton] = []
+    private var replyShownFor: SessionRecord?
+    private var repliesWidth: CGFloat = 0
 
     private var sessions: [SessionRecord] = []
     private var focusID: String?
@@ -63,12 +97,14 @@ final class DashboardController {
 
     init(
         prefs: Preferences, frames: FrameCache, fallback: CharacterDescriptor?,
-        onChipTap: @escaping (SessionRecord) -> Void
+        onChipTap: @escaping (SessionRecord) -> Void,
+        onReply: @escaping (QuickReply, SessionRecord) -> Bool
     ) {
         self.prefs = prefs
         self.frames = frames
         self.fallback = fallback
         self.onChipTap = onChipTap
+        self.onReply = onReply
         TBPShowCloseBoxWhenFrontMost(true)
         buildBar()
         visibilityObservation = bar.observe(\.isVisible, options: [.new]) { [weak self] _, _ in
@@ -85,6 +121,7 @@ final class DashboardController {
         self.sessions = sessions
         self.focusID = focus?.sessionID
         self.character = character
+        replyShownFor = nil
         let picked = render(now: Date())
 
         TBPPresentSystemModal(bar, ControlStripController.identifier)
@@ -120,6 +157,7 @@ final class DashboardController {
         speaker.stop()
         pinned = false
         isPresented = false
+        replyShownFor = nil
         marquee.isActive = false
         sprite.stop()
     }
@@ -196,8 +234,11 @@ final class DashboardController {
         let chipsItem = NSCustomTouchBarItem(identifier: Self.chipsID)
         chipsItem.view = chipsScroll
 
+        let repliesItem = NSCustomTouchBarItem(identifier: Self.repliesID)
+        repliesItem.view = repliesView
+
         bar.defaultItemIdentifiers = [Self.avatarID, Self.bubbleID, Self.chipsID]
-        bar.templateItems = [avatarItem, bubbleItem, chipsItem]
+        bar.templateItems = [avatarItem, bubbleItem, repliesItem, chipsItem]
     }
 
     @objc private func bubbleTapped(_ recognizer: NSClickGestureRecognizer) {
@@ -233,6 +274,7 @@ final class DashboardController {
             lastSpeechKey = key
             lastSpeechCharacterID = character.id
         }
+        layoutReplies(for: focus)
         layoutBubble(text: line ?? "")
         layoutChips(now: now, focusID: focus?.sessionID)
         return repick
@@ -241,7 +283,13 @@ final class DashboardController {
     private var bubbleWidth: CGFloat = 0
 
     private func layoutBubble(text: String) {
-        let width = min(MarqueeLabel.measure(text) + 24, Self.bubbleMaxWidth)
+        let repliesSpace = repliesWidth > 0 ? repliesWidth + Self.itemSpacing : 0
+        let chipsSpace = sessions.isEmpty ? 0 : Self.chipsMinWidth
+        let cap = max(
+            Self.bubbleMinWidth,
+            min(Self.bubbleMaxWidth, Self.totalWidth - Self.reservedWidth - repliesSpace - chipsSpace)
+        )
+        let width = min(MarqueeLabel.measure(text) + 24, cap)
         bubbleWidth = width
         bubbleView.fixedSize = NSSize(width: width, height: Self.barHeight)
         bubbleView.frame = NSRect(x: 0, y: 0, width: width, height: Self.barHeight)
@@ -264,7 +312,8 @@ final class DashboardController {
         }
         let contentWidth = max(0, x - 6)
         document.frame = NSRect(x: 0, y: 0, width: contentWidth, height: Self.barHeight)
-        let available = max(120, Self.totalWidth - Self.reservedWidth - bubbleWidth)
+        let repliesSpace = repliesWidth > 0 ? repliesWidth + Self.itemSpacing : 0
+        let available = max(Self.chipsMinWidth, Self.totalWidth - Self.reservedWidth - bubbleWidth - repliesSpace)
         chipsScroll.width = min(contentWidth, available)
         chipsScroll.documentView = document
         chipsScroll.frame.size = NSSize(width: chipsScroll.width, height: Self.barHeight)
@@ -303,5 +352,112 @@ final class DashboardController {
         button.frame = chip.bounds
         chip.addSubview(button)
         return chip
+    }
+
+    // MARK: Quick replies
+
+    private func layoutReplies(for focus: SessionRecord?) {
+        let replies = focus.map(quickReplies(for:)) ?? []
+        guard let focus, !replies.isEmpty else {
+            setReplies([], shownFor: nil)
+            return
+        }
+        if let shown = replyShownFor, shown.sessionID == focus.sessionID {
+            if shown.updatedAt != focus.updatedAt || shown.state != focus.state { disableReplies() }
+            return
+        }
+        setReplies(replies, shownFor: focus)
+    }
+
+    private func setReplies(_ replies: [QuickReply], shownFor record: SessionRecord?) {
+        replyShownFor = record
+        replyButtons.forEach { $0.removeFromSuperview() }
+        replyButtons = []
+        let identifiers = replies.isEmpty
+            ? [Self.avatarID, Self.bubbleID, Self.chipsID]
+            : [Self.avatarID, Self.bubbleID, Self.repliesID, Self.chipsID]
+        if bar.defaultItemIdentifiers != identifiers { bar.defaultItemIdentifiers = identifiers }
+        guard let record, !replies.isEmpty else {
+            repliesWidth = 0
+            repliesView.fixedSize = NSSize(width: 0, height: Self.barHeight)
+            repliesView.invalidateIntrinsicContentSize()
+            return
+        }
+
+        let yesNo = isYesNo(replies.compactMap { if case .choose(_, let label) = $0 { label } else { nil } })
+        var buttons = replies.map { makeReplyButton(for: $0, yesNo: yesNo, record: record) }
+        let gaps = CGFloat(buttons.count - 1) * Self.replyGap
+        let maxWidth = Self.totalWidth - Self.reservedWidth - Self.itemSpacing - Self.bubbleMinWidth - Self.chipsMinWidth
+        let natural = buttons.reduce(gaps) { $0 + $1.width }
+        let scale = natural > maxWidth ? (maxWidth - gaps) / (natural - gaps) : 1
+        var x: CGFloat = 0
+        for (index, entry) in buttons.enumerated() {
+            let width = floor(entry.width * scale)
+            entry.button.frame = NSRect(x: x, y: 0, width: width, height: Self.barHeight)
+            repliesView.addSubview(entry.button)
+            x += width + Self.replyGap
+            buttons[index].width = width
+        }
+        replyButtons = buttons.map(\.button)
+        repliesWidth = max(0, x - Self.replyGap)
+        repliesView.fixedSize = NSSize(width: repliesWidth, height: Self.barHeight)
+        repliesView.frame = NSRect(x: 0, y: 0, width: repliesWidth, height: Self.barHeight)
+        repliesView.invalidateIntrinsicContentSize()
+    }
+
+    private func disableReplies() {
+        replyButtons.forEach { $0.isEnabled = false }
+    }
+
+    private func makeReplyButton(
+        for reply: QuickReply, yesNo: Bool, record: SessionRecord
+    ) -> (button: NSButton, width: CGFloat) {
+        let tap: () -> Void = { [weak self] in self?.replyTapped(reply) }
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+
+        func symbolButton(_ symbol: String, label: String, tint: NSColor) -> (NSButton, CGFloat) {
+            let button = ReplyButton(accessibilityLabel: label, onTap: tap)
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+                .withSymbolConfiguration(symbolConfig)
+            button.imagePosition = .imageOnly
+            button.bezelColor = tint
+            button.contentTintColor = .white
+            return (button, 46)
+        }
+
+        switch reply {
+        case .allow:
+            return symbolButton("checkmark", label: "Allow", tint: Self.allowGreen)
+        case .deny:
+            return symbolButton("xmark", label: "Deny", tint: Self.denyRed)
+        case .allowAlways:
+            let button = ReplyButton(accessibilityLabel: "Always allow", onTap: tap)
+            button.title = "Always"
+            button.font = .systemFont(ofSize: 11)
+            button.controlSize = .small
+            return (button, ceil(MarqueeLabel.measure("Always")) + 22)
+        case .choose(_, let label):
+            if yesNo, let polarity = yesNoPolarity(label) {
+                return polarity
+                    ? symbolButton("checkmark", label: label, tint: Self.allowGreen)
+                    : symbolButton("xmark", label: label, tint: Self.denyRed)
+            }
+            let button = ReplyButton(accessibilityLabel: label, onTap: tap)
+            let title = chipTitle(label, maxChars: 14)
+            button.title = title
+            button.font = .systemFont(ofSize: 12)
+            return (button, ceil(MarqueeLabel.measure(title)) + 24)
+        }
+    }
+
+    private func replyTapped(_ reply: QuickReply) {
+        guard let shown = replyShownFor else { return }
+        userInteracted()
+        logger.info("reply tapped session=\(shown.sessionID, privacy: .public)")
+        if onReply(reply, shown) {
+            dismiss()
+        } else {
+            disableReplies()
+        }
     }
 }

@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var latestSessions: [SessionRecord] = []
     private let frameCache = FrameCache()
     private let focuser = SessionFocuser()
+    private lazy var replySender = ReplySender(store: SessionStore(directory: paths.sessions))
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -38,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 logger.info("chip tapped session=\(session.sessionID, privacy: .public)")
                 self?.focuser.focus(session)
                 self?.dashboard?.dismiss()
+            },
+            onReply: { [weak self] reply, session in
+                self?.replySender.send(reply, shownFor: session) ?? false
             }
         )
         self.dashboard = dashboard

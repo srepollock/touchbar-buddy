@@ -7,7 +7,7 @@ public enum FocusTarget: Equatable, Sendable {
 }
 
 public func itermUniqueID(from itermSessionID: String) -> String? {
-    let pattern = /w\d+t\d+p\d+:([0-9A-Fa-f-]{36})/
+    let pattern = /w[0-9]+t[0-9]+p[0-9]+:([0-9A-Fa-f-]{36})/
     guard let match = itermSessionID.wholeMatch(of: pattern) else { return nil }
     return String(match.1)
 }
@@ -22,24 +22,36 @@ public func focusTarget(for r: SessionRecord) -> FocusTarget {
     return .itermApp
 }
 
-/// `uniqueID` must come from `itermUniqueID(from:)`; it is the only value ever embedded.
+public func isValidITermUUID(_ value: String) -> Bool {
+    value.wholeMatch(of: /[0-9A-Fa-f-]{36}/) != nil
+}
+
+/// Re-validates `uniqueID` itself; an invalid one yields a script that does nothing.
 public func itermSelectScript(uniqueID: String) -> String {
-    """
-    tell application "iTerm2"
-        repeat with w in windows
-            repeat with t in tabs of w
-                repeat with s in sessions of t
-                    if unique id of s is "\(uniqueID)" then
-                        select w
-                        select t
-                        select s
-                        activate
-                        return "found"
-                    end if
+    guard isValidITermUUID(uniqueID) else { return noOpITermScript }
+    return """
+    if application "iTerm2" is running then
+        with timeout of 3 seconds
+            tell application "iTerm2"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        repeat with s in sessions of t
+                            if unique id of s is "\(uniqueID)" then
+                                set miniaturized of w to false
+                                select w
+                                select t
+                                select s
+                                activate
+                                return "found"
+                            end if
+                        end repeat
+                    end repeat
                 end repeat
-            end repeat
-        end repeat
-    end tell
+            end tell
+        end timeout
+    end if
     return "missing"
     """
 }
+
+let noOpITermScript = "return \"missing\""

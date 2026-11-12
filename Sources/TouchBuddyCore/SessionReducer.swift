@@ -31,6 +31,8 @@ private struct Transition {
     let speechKind: SpeechKind
     let detail: String?
     let toolName: String?
+    var pendingQuestion: String? = nil
+    var pendingOptions: [String]? = nil
 }
 
 public func reduce(existing: SessionRecord?, payload: HookPayload, context: HookContext) -> SessionUpdate {
@@ -38,6 +40,12 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
         return .delete(sessionID: payload.sessionID)
     }
     guard let transition = transition(for: payload) else {
+        return .unchanged
+    }
+    // Claude Code fires a generic permission_prompt notification right after PreToolUse AskUserQuestion;
+    // letting it through would turn the question into an Allow/Deny prompt.
+    if payload.hookEventName == "Notification", transition.speechKind == .permission,
+       existing?.state == .needsInput, existing?.toolName == "AskUserQuestion" {
         return .unchanged
     }
 
@@ -62,7 +70,9 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
             startedAt: existing?.startedAt ?? context.now,
             claudePID: context.claudePID ?? existing?.claudePID,
             itermSessionID: context.itermSessionID ?? existing?.itermSessionID,
-            entrypoint: context.entrypoint ?? existing?.entrypoint
+            entrypoint: context.entrypoint ?? existing?.entrypoint,
+            pendingQuestion: transition.state == .needsInput ? transition.pendingQuestion : nil,
+            pendingOptions: transition.state == .needsInput ? transition.pendingOptions : nil
         )
     )
 }
@@ -76,7 +86,11 @@ private func transition(for payload: HookPayload) -> Transition? {
     case "PreToolUse":
         let summary = toolSummary(toolName: payload.toolName, input: payload.toolInput)
         if payload.toolName == "AskUserQuestion" {
-            return Transition(state: .needsInput, speechKind: .question, detail: summary, toolName: payload.toolName)
+            let single = singleSelectQuestion(payload.toolInput)
+            return Transition(
+                state: .needsInput, speechKind: .question, detail: summary, toolName: payload.toolName,
+                pendingQuestion: single?.question, pendingOptions: single?.options
+            )
         }
         return Transition(state: .working, speechKind: .working, detail: summary, toolName: payload.toolName)
     case "PostToolUse":
@@ -108,4 +122,11 @@ private func notificationTransition(for payload: HookPayload) -> Transition? {
         return nil
     }
     return Transition(state: .needsInput, speechKind: kind, detail: payload.message, toolName: nil)
+}
+
+private func singleSelectQuestion(_ input: ToolInputSummary?) -> (question: String?, options: [String])? {
+    guard let questions = input?.questions, questions.count == 1, let only = questions.first,
+          only.multiSelect != true, let options = only.options, !options.isEmpty
+    else { return nil }
+    return (only.question, options)
 }

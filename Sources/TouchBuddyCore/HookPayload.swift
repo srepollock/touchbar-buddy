@@ -1,20 +1,65 @@
 import Foundation
 
+public struct QuestionSummary: Decodable, Sendable, Equatable {
+    public let question: String?
+    public let multiSelect: Bool?
+    public let options: [String]?
+
+    public init(question: String?, multiSelect: Bool?, options: [String]?) {
+        self.question = question
+        self.multiSelect = multiSelect
+        self.options = options
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case question
+        case multiSelect
+        case options
+    }
+
+    private struct Option: Decodable {
+        let label: String?
+
+        enum CodingKeys: String, CodingKey { case label }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            label = try? container.decodeIfPresent(String.self, forKey: .label)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        question = try? container.decodeIfPresent(String.self, forKey: .question)
+        multiSelect = try? container.decodeIfPresent(Bool.self, forKey: .multiSelect)
+        // Any unreadable option makes the whole list unusable: a partial list would renumber the keystrokes.
+        if let decoded = try? container.decodeIfPresent([Option].self, forKey: .options) {
+            let labels = decoded.compactMap(\.label)
+            options = labels.count == decoded.count ? labels : nil
+        } else {
+            options = nil
+        }
+    }
+}
+
 public struct ToolInputSummary: Decodable, Sendable {
     public let command: String?
     public let filePath: String?
     public let description: String?
+    public let questions: [QuestionSummary]?
 
-    public init(command: String?, filePath: String?, description: String?) {
+    public init(command: String?, filePath: String?, description: String?, questions: [QuestionSummary]? = nil) {
         self.command = command
         self.filePath = filePath
         self.description = description
+        self.questions = questions
     }
 
     enum CodingKeys: String, CodingKey {
         case command
         case filePath = "file_path"
         case description
+        case questions
     }
 
     // MCP tools may send any shape; a mistyped field must not drop the event.
@@ -23,6 +68,7 @@ public struct ToolInputSummary: Decodable, Sendable {
         command = try? container.decodeIfPresent(String.self, forKey: .command)
         filePath = try? container.decodeIfPresent(String.self, forKey: .filePath)
         description = try? container.decodeIfPresent(String.self, forKey: .description)
+        questions = try? container.decodeIfPresent([QuestionSummary].self, forKey: .questions)
     }
 }
 
