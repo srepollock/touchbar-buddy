@@ -32,33 +32,61 @@ public func isValidITermUUID(_ value: String) -> Bool {
     }
 }
 
-/// Shared session lookup for iTerm scripts. Collections are dereferenced up front (`get`) because lazy
-/// index-based references go stale mid-loop ("item 8 of every tab of item 2 of every window"), and each window
-/// is wrapped in `try` so one odd window cannot abort the search. `body` runs with `w`, `t`, `s` bound to the match
-/// and must end in a `return`.
-func itermSessionLookup(uniqueID: String, body: String) -> String {
-    let indented = body.split(separator: "\n", omittingEmptySubsequences: false)
-        .map { $0.isEmpty ? "" : "                    " + $0 }
+/// Shared iTerm script builder. Collections are dereferenced up front (`get`) because lazy index-based references
+/// go stale mid-loop ("item 8 of every tab of item 2 of every window"). Only per-window ENUMERATION is wrapped in
+/// `try`, so one odd window cannot abort the search; timeouts (-1712) and user cancel (-128) are rethrown, and the
+/// last swallowed error number is returned as "missing:<n>". `body` runs outside the `try` with `w`, `t`, `s` bound
+/// to the match, so its errors surface instead of reading as "missing"; it must end in a `return`.
+/// Returns a no-op script unless `uniqueID` is a valid UUID.
+func itermSessionScript(uniqueID: String, prelude: String = "", body: String) -> String {
+    guard isValidITermUUID(uniqueID) else { return noOpITermScript }
+    let indentedBody = body.split(separator: "\n", omittingEmptySubsequences: false)
+        .map { $0.isEmpty ? "" : "            " + $0 }
         .joined(separator: "\n")
     return """
+    \(prelude)
+    set lastErr to 0
+    if application "iTerm2" is running then
+        with timeout of 5 seconds
+            tell application "iTerm2"
+                set found to false
                 repeat with w in (get windows)
                     try
                         repeat with t in (get tabs of w)
                             repeat with s in (get sessions of t)
                                 if unique id of s is "\(uniqueID)" then
-    \(indented)
+                                    set foundW to w
+                                    set foundT to t
+                                    set foundS to s
+                                    set found to true
+                                    exit repeat
                                 end if
                             end repeat
+                            if found then exit repeat
                         end repeat
+                    on error errMsg number errNum
+                        if errNum is -1712 or errNum is -128 then error errMsg number errNum
+                        set lastErr to errNum
                     end try
+                    if found then exit repeat
                 end repeat
+                if found then
+                    set w to foundW
+                    set t to foundT
+                    set s to foundS
+    \(indentedBody)
+                end if
+            end tell
+        end timeout
+    end if
+    if lastErr is 0 then return "missing"
+    return "missing:" & lastErr
     """
 }
 
 /// Re-validates `uniqueID` itself; an invalid one yields a script that does nothing.
 public func itermSelectScript(uniqueID: String) -> String {
-    guard isValidITermUUID(uniqueID) else { return noOpITermScript }
-    let lookup = itermSessionLookup(uniqueID: uniqueID, body: """
+    itermSessionScript(uniqueID: uniqueID, body: """
     set isHotkey to false
     try
         set isHotkey to is hotkey window of w
@@ -73,16 +101,6 @@ public func itermSelectScript(uniqueID: String) -> String {
     if not isHotkey then activate
     return "found"
     """)
-    return """
-    if application "iTerm2" is running then
-        with timeout of 5 seconds
-            tell application "iTerm2"
-    \(lookup)
-            end tell
-        end timeout
-    end if
-    return "missing"
-    """
 }
 
 /// Fallback when the session cannot be found: reveals a hotkey window if one exists. Never activates iTerm

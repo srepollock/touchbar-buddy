@@ -92,7 +92,21 @@ public func itermWriteScript(
             ? "(trimmedLine starts with \"\(footer)\")"
             : "(trimmedLine ends with \"\(footer)\")"
     }.joined(separator: " or ")
-    let lookup = itermSessionLookup(uniqueID: uniqueID, body: """
+    let prelude = """
+    on trimText(t)
+        set ws to {" ", tab, return, linefeed, character id 160}
+        repeat while t is not "" and (first character of t) is in ws
+            if (count of t) is 1 then return ""
+            set t to text 2 thru -1 of t
+        end repeat
+        repeat while t is not "" and (last character of t) is in ws
+            if (count of t) is 1 then return ""
+            set t to text 1 thru -2 of t
+        end repeat
+        return t
+    end trimText
+    """
+    return itermSessionScript(uniqueID: uniqueID, prelude: prelude, body: """
     tell s to set screenText to contents
     set screenLines to paragraphs of screenText
     set promptShown to false
@@ -111,29 +125,6 @@ public func itermWriteScript(
     end if
     return "noprompt"
     """)
-    return """
-    on trimText(t)
-        set ws to {" ", tab, return, linefeed, character id 160}
-        repeat while t is not "" and (first character of t) is in ws
-            if (count of t) is 1 then return ""
-            set t to text 2 thru -1 of t
-        end repeat
-        repeat while t is not "" and (last character of t) is in ws
-            if (count of t) is 1 then return ""
-            set t to text 1 thru -2 of t
-        end repeat
-        return t
-    end trimText
-
-    if application "iTerm2" is running then
-        with timeout of 5 seconds
-            tell application "iTerm2"
-    \(lookup)
-            end tell
-        end timeout
-    end if
-    return "missing"
-    """
 }
 
 private func appleScriptKeyLiteral(_ keys: String) -> String? {

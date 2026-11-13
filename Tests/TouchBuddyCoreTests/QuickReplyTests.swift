@@ -189,7 +189,7 @@ private func record(
         #expect(script.contains("if application \"iTerm2\" is running then"))
         #expect(script.contains("with timeout of 5 seconds"))
         #expect(script.contains("end timeout"))
-        #expect(script.hasSuffix("return \"missing\""))
+        #expect(script.hasSuffix("return \"missing:\" & lastErr"))
     }
 
     @Test func writeScriptUsesDereferencedTryWrappedLookup() {

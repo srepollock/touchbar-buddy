@@ -62,7 +62,7 @@ private func record(iterm: String? = nil, entrypoint: String? = nil) -> SessionR
         #expect(script.contains("end timeout"))
         #expect(script.contains("set miniaturized of w to false"))
         #expect(script.range(of: "set miniaturized of w to false")!.lowerBound < script.range(of: "select w")!.lowerBound)
-        #expect(script.hasSuffix("return \"missing\""))
+        #expect(script.hasSuffix("return \"missing:\" & lastErr"))
     }
 
     @Test func selectScriptDereferencesCollectionsAndTriesEachWindow() {
@@ -70,8 +70,17 @@ private func record(iterm: String? = nil, entrypoint: String? = nil) -> SessionR
         #expect(script.contains("repeat with w in (get windows)"))
         #expect(script.contains("repeat with t in (get tabs of w)"))
         #expect(script.contains("repeat with s in (get sessions of t)"))
-        #expect(script.range(of: "repeat with w in (get windows)")!.upperBound < script.range(of: "try")!.lowerBound)
-        #expect(script.contains("end try"))
+        let lines = script.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let loop = lines.firstIndex(of: "repeat with w in (get windows)")!
+        let tryLine = lines.firstIndex(of: "try")!
+        let endTry = lines.firstIndex(of: "end try")!
+        let reveal = lines.firstIndex(of: "if isHotkey then reveal hotkey window w")!
+        #expect(loop < tryLine && tryLine < endTry)
+        #expect(endTry < lines.firstIndex(of: "set w to foundW")!)
+        #expect(lines.firstIndex(of: "select s")! > endTry && reveal > endTry)
+        #expect(lines.contains("on error errMsg number errNum"))
+        #expect(lines.contains("if errNum is -1712 or errNum is -128 then error errMsg number errNum"))
+        #expect(lines.contains("return \"missing:\" & lastErr"))
     }
 
     @Test func selectScriptRevealsHotkeyWindowBeforeSelecting() {
