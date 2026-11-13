@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [trunk]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Package.swift needs Swift >= 6.0 (swift-tools-version 6.0, strict concurrency).
+      - name: Select newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+
+      - name: Test
+        run: swift test
+
+      # No signing identity exists on the runner, so build-app.sh signs ad-hoc.
+      - name: Build universal release app
+        run: scripts/build-app.sh release
+
+      - name: Assert universal binaries
+        run: |
+          for bin in build/TouchBuddy.app/Contents/MacOS/TouchBuddy build/TouchBuddy.app/Contents/MacOS/touchbuddy-hook; do
+            archs="$(lipo -archs "$bin")"
+            echo "$bin: $archs"
+            case " $archs " in *" x86_64 "*) ;; *) echo "::error::$bin lacks x86_64"; exit 1 ;; esac
+            case " $archs " in *" arm64 "*) ;; *) echo "::error::$bin lacks arm64"; exit 1 ;; esac
+          done
