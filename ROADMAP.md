@@ -5,19 +5,19 @@
 - [x] 2. Session model, hook payload, reducer
 - [x] 3. Session store + `touchbuddy-hook` CLI
 - [x] 4. Session view logic
-- [x] 5. Hook installer for `settings.local.json` (superseded by 5b; only the owner-initiated legacy removal remains)
-- [x] 5b. Hooks delivered as a local Claude Code plugin (`touchbuddy@touchbuddy-local`), versioned by hooks.json content hash
+- [x] 5. Hook installer for `settings.local.json` (superseded by 13b; only the owner-initiated legacy removal remains)
 - [x] 6. Speech templates
 - [x] 7. Character format, discovery, frame decoding
 - [x] 8. Built-in original characters
-- [x] 8b. Chatty mode with wandering avatar
+- [x] 8b. Six more built-in characters
 - [x] 9. App shell: watcher, Control Strip icon, status menu, preferences
 - [x] 10. Dashboard, auto-popup, speech, TTS
 - [x] 11. Jump to session
 - [x] 12. Quick replies from the Touch Bar
-- [x] 12b. Fail-closed quick-reply hardening (in-flight tracking, prompt footers)
+- [x] 12b. Chatty mode (wandering avatar and random updates)
+- [x] 13b. Hooks shipped as a local Claude Code plugin (`touchbuddy@touchbuddy-local`), versioned by hooks.json content hash
 - [ ] 13. Signing, install, end-to-end verification (owner hardware smoke pending)
-- [x] 13b. Final-review fix wave: needs-input survives parallel tool calls, one popup per prompt, safe iTerm focus fallbacks, bounded AppleScript, speech decay, dead installer code removed
+- [x] Final-review fix wave: needs-input survives parallel tool calls, one popup per prompt, safe iTerm focus fallbacks, bounded AppleScript, speech decay, dead installer code removed
 
 See `docs/superpowers/plans/2026-11-11-touchbuddy.md` for task definitions.
 
