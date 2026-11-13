@@ -52,11 +52,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.strip = strip
 
+        let pluginDir = paths.root.appendingPathComponent("claude-plugin", isDirectory: true)
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        do {
+            try ClaudePlugin.write(
+                to: pluginDir, helperPath: "/Applications/TouchBuddy.app/Contents/MacOS/touchbuddy-hook", version: version)
+        } catch {
+            logger.error("could not write Claude Code plugin: \(String(describing: error), privacy: .public)")
+        }
+
         statusMenu = StatusMenu(
             preferences: preferences,
             userCharactersDir: paths.characters,
             settingsURL: HookInstaller.defaultSettingsURL(),
-            helperPath: "/Applications/TouchBuddy.app/Contents/MacOS/touchbuddy-hook",
+            pluginDir: pluginDir,
+            installedPluginsURL: ClaudePlugin.defaultInstalledPluginsURL(),
             characters: { [weak self] in
                 guard let self else { return [] }
                 self.available = discoverCharacters(builtInDir: builtInDir, userDir: self.paths.characters)

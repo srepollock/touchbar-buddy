@@ -11,7 +11,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private let preferences: Preferences
     private let userCharactersDir: URL
     private let settingsURL: URL
-    private let helperPath: String
+    private let pluginDir: URL
+    private let installedPluginsURL: URL
     private let characters: () -> [CharacterDescriptor]
     private let onCharacterSelected: (CharacterDescriptor) -> Void
     private var selectedID: () -> String?
@@ -21,7 +22,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         preferences: Preferences,
         userCharactersDir: URL,
         settingsURL: URL,
-        helperPath: String,
+        pluginDir: URL,
+        installedPluginsURL: URL,
         characters: @escaping () -> [CharacterDescriptor],
         selectedID: @escaping () -> String?,
         onCharacterSelected: @escaping (CharacterDescriptor) -> Void,
@@ -31,7 +33,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         self.preferences = preferences
         self.userCharactersDir = userCharactersDir
         self.settingsURL = settingsURL
-        self.helperPath = helperPath
+        self.pluginDir = pluginDir
+        self.installedPluginsURL = installedPluginsURL
         self.characters = characters
         self.selectedID = selectedID
         self.onCharacterSelected = onCharacterSelected
@@ -103,18 +106,23 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let hooksInstalled = Self.hooksInstalled(at: settingsURL)
-        let hooksOutdated = hooksInstalled && Self.hooksOutdated(at: settingsURL)
-        let hookTitle = hooksOutdated
-            ? "Update Claude Code hooks"
-            : (hooksInstalled ? "Uninstall Claude Code hooks" : "Install Claude Code hooks")
-        let hookItem = NSMenuItem(
-            title: hookTitle,
-            action: hooksInstalled && !hooksOutdated ? #selector(uninstallHooks) : #selector(installHooks),
-            keyEquivalent: ""
-        )
-        hookItem.target = self
-        menu.addItem(hookItem)
+        let pluginInstalled = ClaudePlugin.isInstalled(installedPluginsJSON: try? Data(contentsOf: installedPluginsURL))
+        let statusLine = NSMenuItem(
+            title: pluginInstalled ? "Claude Code plugin: installed ✓" : "Claude Code plugin: not installed",
+            action: nil, keyEquivalent: "")
+        statusLine.isEnabled = false
+        menu.addItem(statusLine)
+
+        let setup = NSMenuItem(title: "Set up Claude Code plugin…", action: #selector(showPluginSetup), keyEquivalent: "")
+        setup.target = self
+        menu.addItem(setup)
+
+        if Self.hooksInstalled(at: settingsURL) {
+            let legacy = NSMenuItem(
+                title: "Remove old settings.local.json hooks", action: #selector(uninstallHooks), keyEquivalent: "")
+            legacy.target = self
+            menu.addItem(legacy)
+        }
 
         let folder = NSMenuItem(title: "Open Characters Folder", action: #selector(openCharactersFolder), keyEquivalent: "")
         folder.target = self
@@ -140,13 +148,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
               let settings = try? JSONDecoder().decode(JSONValue.self, from: data)
         else { return false }
         return HookInstaller.isInstalled(in: settings)
-    }
-
-    static func hooksOutdated(at url: URL) -> Bool {
-        guard let data = try? Data(contentsOf: url),
-              let settings = try? JSONDecoder().decode(JSONValue.self, from: data)
-        else { return false }
-        return !HookInstaller.missingEvents(in: settings).isEmpty
     }
 
     @objc private func selectCharacter(_ sender: NSMenuItem) {
@@ -177,10 +178,17 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         preferences.popupSeconds = seconds
     }
 
-    @objc func installHooks() {
-        let command = HookInstaller.hookCommand(helperPath: helperPath)
-        runHookChange {
-            try HookInstaller.installFile(at: settingsURL, command: command, now: Date())
+    @objc private func showPluginSetup() {
+        let commands = ClaudePlugin.installCommands(pluginDir: pluginDir).joined(separator: "\n")
+        let alert = NSAlert()
+        alert.messageText = "Set up the Claude Code plugin"
+        alert.informativeText = "Run these two commands once in a terminal, then restart Claude Code sessions:\n\n\(commands)"
+        alert.addButton(withTitle: "Copy commands")
+        alert.addButton(withTitle: "Close")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(commands, forType: .string)
         }
     }
 

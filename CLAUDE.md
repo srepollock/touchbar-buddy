@@ -16,7 +16,8 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 
 ## Hooks
 
-- Menu "Install Claude Code hooks" writes `~/.claude/settings.local.json` only (never `settings.json`), with a timestamped backup. Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, Notification, Stop, SessionEnd. "Update Claude Code hooks" appears when an install predates a newly added event.
+- Hooks ship as a local Claude Code plugin: on every launch the app writes a marketplace (`touchbuddy-local`) + plugin (`touchbuddy`) to `<TOUCHBUDDY_HOME or ~/Library/Application Support/TouchBuddy>/claude-plugin` (`ClaudePlugin`, idempotent). Claude Code 2.1.323 ignores hooks in `~/.claude/settings.local.json`. The owner installs once via menu "Set up Claude Code plugin…" (`claude plugin marketplace add "<dir>"`, `claude plugin install touchbuddy@touchbuddy-local`). Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, Notification, Stop, SessionEnd. Validate with `claude plugin validate --strict <dir>`.
+- Menu status reads `~/.claude/plugins/installed_plugins.json` (read-only). "Remove old settings.local.json hooks" appears only while legacy hooks remain there (`HookInstaller`, timestamped backup). TouchBuddy never writes `~/.claude`.
 - Session lock files open with `O_NOFOLLOW`; a symlinked lock path is refused and the hook proceeds unlocked.
 - Quick replies (Allow/Deny/choices) are offered only when exactly one tool call is in flight; with several, the bubble shows the PermissionRequest's own label but no buttons.
 
