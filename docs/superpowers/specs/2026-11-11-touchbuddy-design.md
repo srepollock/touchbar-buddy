@@ -134,8 +134,12 @@ Finished decays to idle after a quiet period (builder's call, e.g. 10 min).
 
 The helper also records `ITERM_SESSION_ID` and the parent Claude PID. The app prunes sessions whose PID is gone (no ghost sessions).
 
-### Hook installation
-"Install hooks" in the menu merges TouchBuddy's entries into **`~/.claude/settings.local.json`** (owner's decision: `settings.json` is dotfile-synced and must not be touched). Create the file if missing; back it up first if present; append to existing per-event arrays (never replace); idempotent (re-running doesn't duplicate); "Uninstall hooks" removes only TouchBuddy's entries. If `settings.local.json` is a symlink, write through to its target rather than replacing the link. TouchBuddy entries are identified by their command path so uninstall can find them.
+### Hook installation (revised 2026-11-13 — owner decision: Claude Code plugin)
+The live test proved `~/.claude/settings.local.json` is **not** a user-scope settings source in Claude Code (2.1.323): only `~/.claude/settings.json` and project `.claude/` files load, so hooks there never fire. The owner chose to ship the hooks as a **local Claude Code plugin**:
+- TouchBuddy writes a local marketplace + plugin to `~/Library/Application Support/TouchBuddy/claude-plugin/` on every launch (idempotent, atomic): `.claude-plugin/marketplace.json` (marketplace name `touchbuddy-local`), `touchbuddy/.claude-plugin/plugin.json` (plugin `touchbuddy`, version = app version), `touchbuddy/hooks/hooks.json` registering every TouchBuddy event with the same guarded command (`[ -x '<helper>' ] && '<helper>'; exit 0`), so a machine without the app is a silent no-op.
+- The owner installs it once with `claude plugin marketplace add "<that dir>"` and `claude plugin install touchbuddy@touchbuddy-local`. Enabling the plugin adds an `enabledPlugins` entry to `~/.claude/settings.json` (accepted by the owner); TouchBuddy itself never writes `~/.claude/settings.json`.
+- The menu replaces "Install Claude Code hooks" with **"Set up Claude Code plugin…"**: a dialog showing those two commands with a Copy button. It shows "Claude Code plugin: installed ✓" when Claude Code's installed-plugins record lists `touchbuddy@touchbuddy-local`.
+- Legacy: if `~/.claude/settings.local.json` still contains TouchBuddy hooks from the first install, the menu offers **"Remove old settings.local.json hooks"** (existing uninstall path, backup first).
 
 ### Jumping to a session
 Use AppleScript against iTerm2 to select the session whose unique id matches the recorded `ITERM_SESSION_ID`. Falls back to just activating iTerm if not found. Requires the macOS Automation permission for iTerm, requested on first use.

@@ -713,6 +713,50 @@ This is an owner request added mid-build. See the spec section "Chatty mode".
 
 ---
 
+### Task 13b: Ship hooks as a local Claude Code plugin
+
+Owner decision after the live test failed: `~/.claude/settings.local.json` hooks never load in Claude Code 2.1.323. See the spec section "Hook installation (revised 2026-11-13)".
+
+**Files:**
+- Create: `Sources/TouchBuddyCore/ClaudePlugin.swift`, `Tests/TouchBuddyCoreTests/ClaudePluginTests.swift`
+- Modify: `Sources/TouchBuddy/StatusMenu.swift`, `Sources/TouchBuddy/AppDelegate.swift`, `CLAUDE.md`
+
+**Interfaces:**
+```swift
+public enum ClaudePlugin {
+  public static let marketplaceName = "touchbuddy-local"
+  public static let pluginName = "touchbuddy"
+  public static func files(helperPath: String, version: String) -> [String: Data]
+     // relative path -> contents, for: ".claude-plugin/marketplace.json", "touchbuddy/.claude-plugin/plugin.json", "touchbuddy/hooks/hooks.json"
+     // hooks.json: {"hooks": {<event>: [{"hooks": [{"type":"command","command": HookInstaller.hookCommand(helperPath:), "timeout": 5}]}]}} for every event in HookInstaller.events
+  public static func write(to dir: URL, helperPath: String, version: String) throws   // atomic per file; only rewrites changed files; dir 0700
+  public static func installCommands(pluginDir: URL) -> [String]                       // ["claude plugin marketplace add \"<dir>\"", "claude plugin install touchbuddy@touchbuddy-local"] with the path shell-quoted
+  public static func isInstalled(installedPluginsJSON: Data?) -> Bool                  // tolerant parse; true if any key/entry names "touchbuddy@touchbuddy-local"
+}
+```
+Look up the exact `marketplace.json`, `plugin.json` and `hooks.json` schema Claude Code 2.1.323 expects. Use the Claude Code plugin docs you know, and confirm against `claude plugin validate <dir>` or `claude plugin details` if a read-only validation command exists. Do NOT run `marketplace add` or `install`; the owner runs those.
+
+The Claude Code installed-plugins record is usually `~/.claude/plugins/installed_plugins.json`. Confirm its location and shape from the CLI's help or docs if you can. Reading it is fine; never write anywhere under `~/.claude`.
+
+- [ ] **Step 1: Write failing tests.**
+  - `hooksJSONRegistersEveryEventWithGuardedCommand`
+  - `marketplaceListsTouchbuddyPluginWithRelativeSource`
+  - `pluginJSONHasNameAndVersion`
+  - `installCommandsQuotePathWithSpaces` (the path contains "Application Support")
+  - `writeIsIdempotentAndDoesNotTouchUnchangedFiles`
+  - `isInstalledToleratesMissingOrGarbage`
+- [ ] **Step 2: Run the tests and see them fail, implement, then run them and see them pass.**
+- [ ] **Step 3: Wire it into the app.**
+  - On launch, the app writes the plugin to `TouchBuddyPaths.root/claude-plugin` (honours `TOUCHBUDDY_HOME`).
+  - The menu changes as follows:
+    - "Set up Claude Code plugin…" opens an NSAlert with the two commands and a "Copy commands" button.
+    - The status line reads "Claude Code plugin: installed ✓" or "not installed".
+    - "Remove old settings.local.json hooks" is shown only while legacy hooks exist there.
+    - The old "Install/Update/Uninstall Claude Code hooks" items are removed. HookInstaller stays for the legacy cleanup.
+- [ ] **Step 4: Validate and commit.** If a read-only CLI validation command exists, run it against the generated dir. Run `swift build && swift test`. Commit as `feat(app): install hooks as a local Claude Code plugin`.
+
+---
+
 ### Task 13: Signing, install, end-to-end verification
 
 **Files:**
