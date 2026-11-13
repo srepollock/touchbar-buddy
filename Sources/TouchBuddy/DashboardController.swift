@@ -178,7 +178,7 @@ final class DashboardController {
         let fallbackSpeech = fallback?.manifest.speech ?? SpeechTemplates(lines: [:])
         let text = speechLine(
             for: session, templates: character.manifest.speech ?? fallbackSpeech,
-            fallback: fallbackSpeech, pick: { $0.randomElement() }
+            fallback: fallbackSpeech, now: Date(), pick: { $0.randomElement() }
         )
         line = text
         lineSessionID = session.sessionID
@@ -333,7 +333,7 @@ final class DashboardController {
         let fallbackSpeech = fallback?.manifest.speech ?? SpeechTemplates(lines: [:])
         let text = speechLine(
             for: target, templates: character.manifest.speech ?? fallbackSpeech,
-            fallback: fallbackSpeech, pick: { $0.randomElement() }
+            fallback: fallbackSpeech, now: now, pick: { $0.randomElement() }
         )
         line = text
         lineSessionID = target?.sessionID
@@ -471,7 +471,7 @@ final class DashboardController {
             sprite.stop()
         }
 
-        let key = speechKey(for: focus)
+        let key = speechKey(for: focus, now: now)
         let repick = shouldRepickSpeech(previous: lastSpeechKey, current: key, hasLine: line != nil)
             || lastSpeechCharacterID != character.id
         if repick {
@@ -480,6 +480,7 @@ final class DashboardController {
                 for: focus,
                 templates: character.manifest.speech ?? fallbackSpeech,
                 fallback: fallbackSpeech,
+                now: now,
                 pick: { $0.randomElement() }
             )
             lastSpeechKey = key

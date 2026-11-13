@@ -152,9 +152,16 @@ private func record(
         #expect(keystrokes(for: .choose(index: 0, label: "x")) == "")
     }
 
-    @Test func staleWhenUpdatedAtChanged() {
+    @Test func validWhenOnlyUpdatedAtChanged() {
         let shown = record()
-        #expect(!isReplyStillValid(shownFor: shown, current: record(updatedAt: t0.addingTimeInterval(1))))
+        #expect(isReplyStillValid(shownFor: shown, current: record(updatedAt: t0.addingTimeInterval(1))))
+    }
+
+    @Test func staleWhenPromptIdentityChanged() {
+        let shown = record()
+        #expect(!isReplyStillValid(shownFor: shown, current: record(inFlight: ["toolu_1", "toolu_2"])))
+        #expect(!isReplyStillValid(shownFor: shown, current: record(kind: .question)))
+        #expect(!isReplyStillValid(shownFor: shown, current: record(iterm: nil)))
     }
 
     @Test func staleWhenStateChanged() {

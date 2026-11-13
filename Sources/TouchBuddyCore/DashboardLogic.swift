@@ -3,11 +3,16 @@ import Foundation
 public struct SpeechKey: Equatable, Sendable {
     public let sessionID: String
     public let state: SessionState
-    public let updatedAt: Date
+    public let prompt: PromptIdentity
+    /// nil while needs-input so a same-prompt rewrite does not re-pick; other states re-pick on every new record.
+    public let updatedAt: Date?
 }
 
-public func speechKey(for session: SessionRecord?) -> SpeechKey? {
-    session.map { SpeechKey(sessionID: $0.sessionID, state: $0.state, updatedAt: $0.updatedAt) }
+public func speechKey(for session: SessionRecord?, now: Date) -> SpeechKey? {
+    session.map { SpeechKey(
+            sessionID: $0.sessionID, state: effectiveState($0, now: now), prompt: PromptIdentity($0),
+            updatedAt: $0.state == .needsInput ? nil : $0.updatedAt
+        ) }
 }
 
 public func shouldRepickSpeech(previous: SpeechKey?, current: SpeechKey?, hasLine: Bool) -> Bool {

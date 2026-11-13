@@ -61,7 +61,7 @@ public func keystrokes(for reply: QuickReply) -> String {
 
 public func isReplyStillValid(shownFor: SessionRecord, current: SessionRecord?) -> Bool {
     guard let current else { return false }
-    return current.state == .needsInput && current == shownFor
+    return current.state == .needsInput && PromptIdentity(current) == PromptIdentity(shownFor)
 }
 
 /// true = affirmative, false = negative, nil = neither. Matches the word at the start of the label.

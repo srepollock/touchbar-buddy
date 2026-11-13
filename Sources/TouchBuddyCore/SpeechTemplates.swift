@@ -73,13 +73,20 @@ public func renderTemplate(_ template: String, values: [String: String]) -> Stri
     return output
 }
 
+/// A finished session older than the decay window reads as idle, matching its displayed state.
+func speechKind(for session: SessionRecord, now: Date) -> SpeechKind {
+    if session.speechKind == .finished, effectiveState(session, now: now) == .idle { return .idle }
+    return session.speechKind
+}
+
 public func speechLine(
     for session: SessionRecord?,
     templates: SpeechTemplates,
     fallback: SpeechTemplates,
+    now: Date,
     pick: ([String]) -> String?
 ) -> String {
-    let kind = session?.speechKind ?? .allClear
+    let kind = session.map { speechKind(for: $0, now: now) } ?? .allClear
     let candidates = [templates.lines[kind], fallback.lines[kind]]
         .compactMap { $0 }
         .first { !$0.isEmpty }

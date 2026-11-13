@@ -33,13 +33,44 @@ public func overallState(_ rs: [SessionRecord], now: Date) -> SessionState? {
     rs.map { effectiveState($0, now: now) }.min { statePriority($0) < statePriority($1) }
 }
 
+/// What the user is being asked, independent of when the record was last rewritten.
+public struct PromptIdentity: Equatable, Sendable {
+    let sessionID: String
+    let state: SessionState
+    let pendingToolUseID: String?
+    let toolName: String?
+    let detail: String?
+    let speechKind: SpeechKind
+    let pendingOptions: [String]?
+    let itermSessionID: String?
+    let inFlightToolUseIDs: [String]?
+
+    public init(_ r: SessionRecord) {
+        sessionID = r.sessionID
+        state = r.state
+        pendingToolUseID = r.pendingToolUseID
+        toolName = r.toolName
+        detail = r.detail
+        speechKind = r.speechKind
+        pendingOptions = r.pendingOptions
+        itermSessionID = r.itermSessionID
+        inFlightToolUseIDs = r.inFlightToolUseIDs
+    }
+}
+
+/// PermissionRequest and the Notification that follows it both write needs-input for the same prompt.
+private func isSamePrompt(_ a: SessionRecord, _ b: SessionRecord) -> Bool {
+    a.state == .needsInput && b.state == .needsInput
+        && a.pendingToolUseID == b.pendingToolUseID && a.toolName == b.toolName && a.detail == b.detail
+}
+
 public func popupTriggers(old: [SessionRecord], new: [SessionRecord], now: Date) -> [SessionRecord] {
     let oldByID = Dictionary(old.map { ($0.sessionID, $0) }, uniquingKeysWith: { _, last in last })
     return new.filter { record in
         guard effectiveState(record, now: now) == .needsInput else { return false }
         guard let previous = oldByID[record.sessionID] else { return true }
-        return effectiveState(previous, now: now) != .needsInput
-            || previous.updatedAt != record.updatedAt
+        guard effectiveState(previous, now: now) == .needsInput else { return true }
+        return !isSamePrompt(previous, record)
     }
 }
 

@@ -9,22 +9,43 @@ private func record(_ id: String = "a", state: SessionState = .needsInput, at: T
     )
 }
 
+private let t = Date(timeIntervalSince1970: 200)
+
 @Suite struct DashboardLogicTests {
     @Test func repicksWhenNoLineYet() {
-        let key = speechKey(for: record())
+        let key = speechKey(for: record(), now: t)
         #expect(shouldRepickSpeech(previous: key, current: key, hasLine: false))
     }
 
     @Test func keepsLineWhenStateAndUpdatedAtUnchanged() {
-        let key = speechKey(for: record())
-        #expect(!shouldRepickSpeech(previous: key, current: speechKey(for: record()), hasLine: true))
+        let key = speechKey(for: record(), now: t)
+        #expect(!shouldRepickSpeech(previous: key, current: speechKey(for: record(), now: t), hasLine: true))
+    }
+
+    @Test func keepsLineWhenNeedsInputRewrittenWithSamePrompt() {
+        let base = speechKey(for: record(), now: t)
+        #expect(!shouldRepickSpeech(previous: base, current: speechKey(for: record(at: 101), now: t), hasLine: true))
+    }
+
+    @Test func repicksWhenNeedsInputPromptChanges() {
+        let base = speechKey(for: record(), now: t)
+        var other = record()
+        other.detail = "rm -rf build"
+        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: other, now: t), hasLine: true))
+    }
+
+    @Test func repicksWhenFinishedDecaysToIdle() {
+        let finished = record(state: .finished, at: 100)
+        let fresh = speechKey(for: finished, now: Date(timeIntervalSince1970: 200))
+        let decayed = speechKey(for: finished, now: Date(timeIntervalSince1970: 100 + finishedDecaySeconds + 1))
+        #expect(shouldRepickSpeech(previous: fresh, current: decayed, hasLine: true))
     }
 
     @Test func repicksOnNewUpdatedAtStateOrSession() {
-        let base = speechKey(for: record())
-        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record(at: 101)), hasLine: true))
-        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record(state: .working)), hasLine: true))
-        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record("b")), hasLine: true))
+        let base = speechKey(for: record(state: .working), now: t)
+        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record(state: .working, at: 101), now: t), hasLine: true))
+        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record(), now: t), hasLine: true))
+        #expect(shouldRepickSpeech(previous: base, current: speechKey(for: record("b", state: .working), now: t), hasLine: true))
         #expect(shouldRepickSpeech(previous: base, current: nil, hasLine: true))
     }
 

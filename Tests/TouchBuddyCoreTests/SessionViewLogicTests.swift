@@ -73,9 +73,24 @@ private func rec(
 }
 
 @Test func popupOnRepeatedPermissionPrompt() {
-    let old = [rec("a", .needsInput)]
-    let new = [rec("a", .needsInput, updated: base.addingTimeInterval(30))]
-    #expect(popupTriggers(old: old, new: new, now: base.addingTimeInterval(30)).count == 1)
+    var first = rec("a", .needsInput)
+    first.detail = "ls"
+    var second = rec("a", .needsInput, updated: base.addingTimeInterval(30))
+    second.detail = "rm -rf build"
+    #expect(popupTriggers(old: [first], new: [second], now: base.addingTimeInterval(30)).count == 1)
+    second.detail = first.detail
+    second.pendingToolUseID = "toolu_2"
+    #expect(popupTriggers(old: [first], new: [second], now: base.addingTimeInterval(30)).count == 1)
+}
+
+@Test func noPopupWhenSamePromptRewrittenLater() {
+    var first = rec("a", .needsInput)
+    first.pendingToolUseID = "toolu_1"
+    first.toolName = "Bash"
+    first.detail = "ls"
+    var second = first
+    second.updatedAt = base.addingTimeInterval(1)
+    #expect(popupTriggers(old: [first], new: [second], now: base.addingTimeInterval(1)).isEmpty)
 }
 
 @Test func noPopupForFinished() {
