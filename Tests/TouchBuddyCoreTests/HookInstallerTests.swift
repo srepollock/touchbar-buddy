@@ -40,6 +40,26 @@ private func groups(_ settings: JSONValue, _ event: String) -> [JSONValue] {
     return list
 }
 
+/// Test fixture: a settings object as the retired installer used to write it.
+private func installed(_ settings: JSONValue) -> JSONValue {
+    guard case .object(var root) = settings else { return settings }
+    var hooks: [String: JSONValue] = [:]
+    if case .object(let existing)? = root["hooks"] { hooks = existing }
+    for event in HookInstaller.events {
+        var list: [JSONValue] = []
+        if case .array(let groups)? = hooks[event] { list = groups }
+        hooks[event] = .array(list + [ourGroup()])
+    }
+    root["hooks"] = .object(hooks)
+    return .object(root)
+}
+
+private func writeInstalled(at url: URL) throws {
+    let existing = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }
+    let data = try JSONEncoder().encode(installed(existing ?? .object([:])))
+    try data.write(to: url)
+}
+
 private func ourGroup() -> JSONValue {
     .object(["hooks": .array([.object([
         "type": .string("command"), "command": .string(ourCommand), "timeout": .number(5),
@@ -51,49 +71,11 @@ private func ourGroup() -> JSONValue {
     #expect(ourCommand.contains(HookInstaller.marker))
 }
 
-@Test func installIntoEmpty() {
-    let result = HookInstaller.install(into: .object([:]), command: ourCommand)
-    for event in HookInstaller.events {
-        #expect(groups(result, event) == [ourGroup()])
-    }
-    #expect(HookInstaller.isInstalled(in: result))
-}
-
-@Test func installPreservesExistingHooks() throws {
-    let original = try parse(ownerSettings)
-    let result = HookInstaller.install(into: original, command: ourCommand)
-    for event in ["PreToolUse", "PostToolUse", "Notification", "SessionStart", "UserPromptSubmit"] {
-        let before = groups(original, event)
-        let after = groups(result, event)
-        #expect(Array(after.prefix(before.count)) == before)
-        #expect(after.count == before.count + 1)
-        #expect(after.last == ourGroup())
-    }
-    #expect(groups(result, "Stop") == [ourGroup()])
-    #expect(groups(result, "SessionEnd") == [ourGroup()])
-}
-
-@Test func installPreservesUnrelatedKeys() throws {
-    let original = try parse(ownerSettings)
-    let result = HookInstaller.install(into: original, command: ourCommand)
-    guard case .object(let before) = original, case .object(let after) = result else {
-        Issue.record("expected objects"); return
-    }
-    #expect(after["permissions"] == before["permissions"])
-    #expect(after["env"] == before["env"])
-}
-
-@Test func installIsIdempotent() throws {
-    let once = HookInstaller.install(into: try parse(ownerSettings), command: ourCommand)
-    let twice = HookInstaller.install(into: once, command: ourCommand)
-    #expect(once == twice)
-}
-
 @Test func uninstallRemovesOnlyOurs() throws {
     let original = try parse(ownerSettings)
-    let installed = HookInstaller.install(into: original, command: ourCommand)
-    #expect(HookInstaller.uninstall(from: installed) == original)
-    #expect(!HookInstaller.isInstalled(in: HookInstaller.uninstall(from: installed)))
+    let withOurs = installed(original)
+    #expect(HookInstaller.uninstall(from: withOurs) == original)
+    #expect(!HookInstaller.isInstalled(in: HookInstaller.uninstall(from: withOurs)))
 }
 
 @Test func uninstallKeepsOtherCommandsInSharedGroup() throws {
@@ -111,8 +93,8 @@ private func ourGroup() -> JSONValue {
 
 @Test func uninstallDropsEmptiedHooksObject() throws {
     let original = try parse(#"{ "env": { "A": "b" } }"#)
-    let installed = HookInstaller.install(into: original, command: ourCommand)
-    #expect(HookInstaller.uninstall(from: installed) == original)
+    let withOurs = installed(original)
+    #expect(HookInstaller.uninstall(from: withOurs) == original)
 }
 
 @Test func numbersEncodeWithoutFraction() throws {
@@ -123,71 +105,11 @@ private func ourGroup() -> JSONValue {
     #expect(text.contains("1.5"))
 }
 
-@Test func installFileCreatesMissingFile() throws {
-    let url = try makeTempDirectory().appendingPathComponent("settings.local.json")
-    try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-    let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-    #expect(HookInstaller.isInstalled(in: written))
-}
-
-@Test func installFileBacksUpExisting() throws {
-    let dir = try makeTempDirectory()
-    let url = dir.appendingPathComponent("settings.local.json")
-    let original = Data(ownerSettings.utf8)
-    try original.write(to: url)
-    let now = Date(timeIntervalSince1970: 1_700_000_000)
-    try HookInstaller.installFile(at: url, command: ourCommand, now: now)
-
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = .current
-    formatter.dateFormat = "yyyyMMdd-HHmmss"
-    let backup = dir.appendingPathComponent("settings.local.json.touchbuddy-backup-\(formatter.string(from: now))")
-    #expect(try Data(contentsOf: backup) == original)
-    let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
-    #expect(HookInstaller.isInstalled(in: written))
-}
-
-@Test func installFileRefusesInvalidJSON() throws {
-    let dir = try makeTempDirectory()
-    let url = dir.appendingPathComponent("settings.local.json")
-    let bytes = Data("{ not json".utf8)
-    try bytes.write(to: url)
-    #expect(throws: HookInstallerError.invalidJSON) {
-        try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-    }
-    #expect(try Data(contentsOf: url) == bytes)
-    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).count == 1)
-}
-
-@Test func installFileRefusesNonObjectRoot() throws {
-    let url = try makeTempDirectory().appendingPathComponent("settings.local.json")
-    try Data("[1,2]".utf8).write(to: url)
-    #expect(throws: HookInstallerError.notAnObject) {
-        try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-    }
-}
-
-@Test func installFileWritesThroughSymlink() throws {
-    let dir = try makeTempDirectory()
-    let target = dir.appendingPathComponent("real.json")
-    let link = dir.appendingPathComponent("settings.local.json")
-    try Data("{}".utf8).write(to: target)
-    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
-    try HookInstaller.installFile(at: link, command: ourCommand, now: Date())
-
-    #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil)
-    let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: target))
-    #expect(HookInstaller.isInstalled(in: written))
-    let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-    #expect(names.contains { $0.hasPrefix("real.json.touchbuddy-backup-") })
-}
-
 @Test func uninstallFileRemovesOursAndBacksUp() throws {
     let dir = try makeTempDirectory()
     let url = dir.appendingPathComponent("settings.local.json")
     try Data(ownerSettings.utf8).write(to: url)
-    try HookInstaller.installFile(at: url, command: ourCommand, now: Date(timeIntervalSince1970: 1_700_000_000))
+    try writeInstalled(at: url)
     try HookInstaller.uninstallFile(at: url, now: Date(timeIntervalSince1970: 1_700_000_100))
     let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
     #expect(written == (try parse(ownerSettings)))
@@ -221,32 +143,17 @@ private func mode(_ url: URL) throws -> Int {
 @Test func sameSecondBackupsAreNeverOverwritten() throws {
     let dir = try makeTempDirectory()
     let url = dir.appendingPathComponent("settings.local.json")
-    let original = Data(ownerSettings.utf8)
-    try original.write(to: url)
+    try Data(ownerSettings.utf8).write(to: url)
     let now = Date(timeIntervalSince1970: 1_700_000_000)
-    try HookInstaller.installFile(at: url, command: ourCommand, now: now)
+    try writeInstalled(at: url)
+    let firstInstalled = try Data(contentsOf: url)
+    try HookInstaller.uninstallFile(at: url, now: now)
+    try writeInstalled(at: url)
     try HookInstaller.uninstallFile(at: url, now: now)
     let names = try backups(in: dir)
     #expect(names.count == 2)
     let first = try #require(names.first { !$0.hasSuffix("-1") })
-    #expect(try Data(contentsOf: dir.appendingPathComponent(first)) == original)
-}
-
-@Test func installKeepsExistingMode() throws {
-    let dir = try makeTempDirectory()
-    let url = dir.appendingPathComponent("settings.local.json")
-    try Data("{}".utf8).write(to: url)
-    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-    try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-    #expect(try mode(url) == 0o600)
-    let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.contains("tmp") }
-    #expect(leftovers.isEmpty)
-}
-
-@Test func newFileIsMode0600() throws {
-    let url = try makeTempDirectory().appendingPathComponent("settings.local.json")
-    try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-    #expect(try mode(url) == 0o600)
+    #expect(try Data(contentsOf: dir.appendingPathComponent(first)) == firstInstalled)
 }
 
 @Test func uninstallFileMissingFileDoesNothing() throws {
@@ -265,31 +172,6 @@ private func mode(_ url: URL) throws -> Int {
     #expect(try backups(in: dir).isEmpty)
 }
 
-@Test func installFileRefusesNonObjectHooks() throws {
-    for json in [#"{ "hooks": [] }"#, #"{ "hooks": { "Stop": {} } }"#] {
-        let dir = try makeTempDirectory()
-        let url = dir.appendingPathComponent("settings.local.json")
-        let bytes = Data(json.utf8)
-        try bytes.write(to: url)
-        #expect(throws: HookInstallerError.notAnObject) {
-            try HookInstaller.installFile(at: url, command: ourCommand, now: Date())
-        }
-        #expect(try Data(contentsOf: url) == bytes)
-        #expect(try backups(in: dir).isEmpty)
-    }
-}
-
-@Test func installFileThroughDanglingSymlinkKeepsLink() throws {
-    let dir = try makeTempDirectory()
-    let target = dir.appendingPathComponent("real.json")
-    let link = dir.appendingPathComponent("settings.local.json")
-    try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "real.json")
-    try HookInstaller.installFile(at: link, command: ourCommand, now: Date())
-    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == "real.json")
-    let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: target))
-    #expect(HookInstaller.isInstalled(in: written))
-}
-
 @Test func hookCommandEscapesSingleQuotes() throws {
     let command = HookInstaller.hookCommand(helperPath: "/tmp/it's here/touchbuddy-hook")
     #expect(command.contains("'/tmp/it'\\''s here/touchbuddy-hook'"))
@@ -301,42 +183,11 @@ private func mode(_ url: URL) throws -> Int {
     #expect(process.terminationStatus == 0)
 }
 
-@Test func installRegistersPermissionRequest() {
+@Test func uninstallRemovesPermissionRequest() {
     #expect(HookInstaller.events.contains("PermissionRequest"))
-    let result = HookInstaller.install(into: .object([:]), command: ourCommand)
+    let result = installed(.object([:]))
     #expect(groups(result, "PermissionRequest") == [ourGroup()])
     let removed = HookInstaller.uninstall(from: result)
     #expect(groups(removed, "PermissionRequest").isEmpty)
 }
 
-@Test func installRegistersPostToolUseFailure() {
-    #expect(HookInstaller.events.contains("PostToolUseFailure"))
-    let result = HookInstaller.install(into: .object([:]), command: ourCommand)
-    #expect(groups(result, "PostToolUseFailure") == [ourGroup()])
-}
-
-@Test func missingEventsReportsInstallPredatingPostToolUseFailure() {
-    let full = HookInstaller.install(into: .object([:]), command: ourCommand)
-    guard case .object(var root) = full, case .object(var hooks)? = root["hooks"] else {
-        Issue.record("unexpected shape")
-        return
-    }
-    hooks["PostToolUseFailure"] = nil
-    root["hooks"] = .object(hooks)
-    #expect(HookInstaller.missingEvents(in: .object(root)) == ["PostToolUseFailure"])
-}
-
-@Test func missingEventsReportsOldInstall() {
-    let full = HookInstaller.install(into: .object([:]), command: ourCommand)
-    #expect(HookInstaller.missingEvents(in: full).isEmpty)
-    guard case .object(var root) = full, case .object(var hooks)? = root["hooks"] else {
-        Issue.record("unexpected shape")
-        return
-    }
-    hooks["PermissionRequest"] = nil
-    root["hooks"] = .object(hooks)
-    #expect(HookInstaller.missingEvents(in: .object(root)) == ["PermissionRequest"])
-    #expect(HookInstaller.missingEvents(in: .object([:])) == HookInstaller.events)
-    let updated = HookInstaller.install(into: .object(root), command: ourCommand)
-    #expect(HookInstaller.missingEvents(in: updated).isEmpty)
-}

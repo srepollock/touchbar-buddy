@@ -27,25 +27,7 @@ public enum HookInstaller {
             .appendingPathComponent(".claude/settings.local.json")
     }
 
-    // MARK: - Pure transforms
-
-    public static func install(into settings: JSONValue, command: String) -> JSONValue {
-        var root = objectValue(settings)
-        var hooks = objectValue(root["hooks"])
-        for event in events {
-            var groups = arrayValue(hooks[event])
-            if groups.contains(where: { commands(in: $0).contains(command) }) { continue }
-            groups = groups.compactMap { removingOurs(from: $0) }
-            groups.append(.object(["hooks": .array([.object([
-                "type": .string("command"),
-                "command": .string(command),
-                "timeout": .number(5),
-            ])])]))
-            hooks[event] = .array(groups)
-        }
-        root["hooks"] = .object(hooks)
-        return .object(root)
-    }
+    // MARK: - Legacy removal (owner-initiated; hooks now ship as a plugin)
 
     public static func uninstall(from settings: JSONValue) -> JSONValue {
         guard case .object(var root) = settings, case .object(var hooks)? = root["hooks"] else {
@@ -72,35 +54,10 @@ public enum HookInstaller {
         }
     }
 
-    /// Events for which no TouchBuddy hook is registered (an old install lacks newer events).
-    public static func missingEvents(in settings: JSONValue) -> [String] {
-        guard case .object(let root) = settings, case .object(let hooks)? = root["hooks"] else { return events }
-        return events.filter { event in
-            guard case .array(let groups)? = hooks[event] else { return true }
-            return !groups.contains { commands(in: $0).contains { $0.contains(marker) } }
-        }
-    }
-
     // MARK: - File level
-
-    public static func installFile(at url: URL, command: String, now: Date) throws {
-        try transformFile(at: url, now: now, validate: validateForInstall) {
-            install(into: $0, command: command)
-        }
-    }
 
     public static func uninstallFile(at url: URL, now: Date) throws {
         try transformFile(at: url, now: now, requireInstalled: true) { uninstall(from: $0) }
-    }
-
-    private static func validateForInstall(_ settings: JSONValue) throws {
-        guard case .object(let root) = settings else { throw HookInstallerError.notAnObject }
-        guard let hooksValue = root["hooks"] else { return }
-        guard case .object(let hooks) = hooksValue else { throw HookInstallerError.notAnObject }
-        for event in events {
-            if let value = hooks[event], case .array = value { continue }
-            if hooks[event] != nil { throw HookInstallerError.notAnObject }
-        }
     }
 
     private static func resolveTarget(_ url: URL) -> URL {
@@ -120,7 +77,6 @@ public enum HookInstaller {
 
     private static func transformFile(
         at url: URL, now: Date, requireInstalled: Bool = false,
-        validate: (JSONValue) throws -> Void = { _ in },
         transform: (JSONValue) -> JSONValue
     ) throws {
         let target = resolveTarget(url)
@@ -138,7 +94,6 @@ public enum HookInstaller {
         } else if requireInstalled {
             return
         }
-        try validate(current)
         if requireInstalled, !isInstalled(in: current) { return }
 
         let directory = target.deletingLastPathComponent()
