@@ -21,6 +21,12 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 - Session lock files open with `O_NOFOLLOW`; a symlinked lock path is refused and the hook proceeds unlocked.
 - Quick replies (Allow/Deny/choices) are offered only when exactly one tool call is in flight; with several, the bubble shows the PermissionRequest's own label but no buttons.
 
+## CI
+
+- `.github/workflows/reusable-*.yml` are vendored from `srepollock/ci-toolkit` v1.3.0 (4e4f977), because ci-toolkit is private and this repo is public. Edit them here, not upstream. Only deviation: the "Refuse fork pull requests" step in `reusable-ai-agent.yml` (ci-toolkit#59).
+- Re-vendor: fetch the new tag's `ai-agent|ai-review|ai-triage|dependabot-triage|release-please.yml` with `gh api 'repos/srepollock/ci-toolkit/contents/.github/workflows/<name>.yml?ref=<tag>' --jq .content | base64 -d`, prepend the provenance header (copy the existing one, update version and sha), and re-apply the fork guard.
+- `ci.yml` (`name: ci`, macos-26) is TouchBuddy's own; `dependabot-triage.yml` matches it by name. `release.yml` calls release-please and attaches the ad-hoc-signed universal zip.
+
 ## Layout
 
 - `Sources/TouchBarPrivate` - ObjC shim over private DFRFoundation / NSTouchBar system-modal APIs (resolved via dlopen/dlsym, no-ops if unavailable)
