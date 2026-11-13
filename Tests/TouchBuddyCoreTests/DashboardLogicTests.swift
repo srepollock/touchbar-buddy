@@ -34,6 +34,14 @@ private let t = Date(timeIntervalSince1970: 200)
         #expect(shouldRepickSpeech(previous: base, current: speechKey(for: other, now: t), hasLine: true))
     }
 
+    @Test func keepsLineWhenOnlyParallelCallsChange() {
+        var waiting = record()
+        waiting.inFlightToolUseIDs = ["A"]
+        var busier = waiting
+        busier.inFlightToolUseIDs = ["A", "B"]
+        #expect(!shouldRepickSpeech(previous: speechKey(for: waiting, now: t), current: speechKey(for: busier, now: t), hasLine: true))
+    }
+
     @Test func repicksWhenFinishedDecaysToIdle() {
         let finished = record(state: .finished, at: 100)
         let fresh = speechKey(for: finished, now: Date(timeIntervalSince1970: 200))

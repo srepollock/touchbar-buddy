@@ -53,22 +53,26 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
         return .unchanged
     }
 
-    // Without a PermissionRequest the notification carries no tool identity; inherit it from the PreToolUse record.
-    if payload.hookEventName == "Notification", transition.speechKind == .permission,
-       let existing, let toolUseID = existing.pendingToolUseID {
+    // Neither a permission Notification nor a PermissionRequest carries a tool_use_id. With one call in flight the
+    // prompt must be for that call; with several, the last PreToolUse's id may belong to a different call than the
+    // label shows, so the prompt gets no id. keptNeedsInput and quickReplies then both fail closed.
+    let promptIsAmbiguous = (existing?.inFlightToolUseIDs?.count ?? 0) > 1
+
+    // Without a PermissionRequest the notification carries no tool identity; inherit it from the record.
+    if payload.hookEventName == "Notification", transition.speechKind == .permission, let existing,
+       existing.pendingToolUseID != nil || (existing.state == .needsInput && existing.speechKind == .permission) {
         transition = Transition(
             state: .needsInput, speechKind: .permission, detail: existing.detail ?? transition.detail,
-            toolName: existing.toolName, pendingToolUseID: toolUseID
+            toolName: existing.toolName, pendingToolUseID: promptIsAmbiguous ? nil : existing.pendingToolUseID
         )
     }
 
-    // PermissionRequest carries no tool_use_id, so pendingToolUseID keeps pointing at the PreToolUse record and
-    // quickReplies stays empty unless exactly one call is in flight. The label shown is always the request's own.
+    // The label shown is always the request's own.
     if payload.hookEventName == "PermissionRequest" {
         transition = Transition(
             state: .needsInput, speechKind: .permission,
             detail: transition.detail, toolName: transition.toolName,
-            pendingToolUseID: existing?.pendingToolUseID
+            pendingToolUseID: promptIsAmbiguous ? nil : existing?.pendingToolUseID
         )
     }
 

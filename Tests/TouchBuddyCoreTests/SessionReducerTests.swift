@@ -506,3 +506,38 @@ private func promptRecord() -> SessionRecord {
         #expect(record.state != .needsInput)
     }
 }
+
+@Test func permissionRequestWithParallelCallsCannotBindRepliesToAnotherCall() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
+    let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Bash", command: "ls a"), context: context))
+    #expect(request.pendingToolUseID == nil)
+    let answeredA = try upserted(reduce(existing: request, payload: toolEvent("PostToolUse", tool: "Bash", id: "A"), context: context))
+    #expect(answeredA.state == .working)
+    #expect(answeredA.inFlightToolUseIDs == ["B"])
+    #expect(quickReplies(for: withIterm(answeredA)).isEmpty)
+}
+
+@Test func secondPromptDuringPendingPromptCannotBindRepliesToTheFirst() throws {
+    let pre = try toolEvent("PreToolUse", tool: "Bash", id: "toolu_B", input: "{\"command\": \"ls b\"}")
+    let afterPre = try upserted(reduce(existing: promptRecord(), payload: pre, context: context))
+    let request = try upserted(reduce(existing: afterPre, payload: permissionRequest(tool: "Bash", command: "ls b"), context: context))
+    #expect(request.detail == "ls b")
+    #expect(request.pendingToolUseID == nil)
+    let resolvedB = try upserted(reduce(existing: request, payload: toolEvent("PostToolUse", tool: "Bash", id: "toolu_B"), context: context))
+    #expect(resolvedB.state == .working)
+    #expect(quickReplies(for: withIterm(resolvedB)).isEmpty)
+}
+
+@Test func permissionNotificationWithParallelCallsKeepsLabelButDropsIdentity() throws {
+    let a = try upserted(reduce(existing: nil, payload: toolEvent("PreToolUse", tool: "Bash", id: "A", input: "{\"command\": \"ls a\"}"), context: context))
+    let b = try upserted(reduce(existing: a, payload: toolEvent("PreToolUse", tool: "Bash", id: "B", input: "{\"command\": \"ls b\"}"), context: context))
+    let note = try upserted(reduce(existing: b, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(note.state == .needsInput)
+    #expect(note.pendingToolUseID == nil)
+    let request = try upserted(reduce(existing: b, payload: permissionRequest(tool: "Edit", command: "other"), context: context))
+    let noteAfterRequest = try upserted(reduce(existing: request, payload: event("Notification", extra: permissionNote), context: context))
+    #expect(noteAfterRequest.detail == "other")
+    #expect(noteAfterRequest.toolName == "Edit")
+    #expect(noteAfterRequest.pendingToolUseID == nil)
+}

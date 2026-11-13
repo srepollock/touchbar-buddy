@@ -9,10 +9,15 @@ public struct SpeechKey: Equatable, Sendable {
 }
 
 public func speechKey(for session: SessionRecord?, now: Date) -> SpeechKey? {
-    session.map { SpeechKey(
-            sessionID: $0.sessionID, state: effectiveState($0, now: now), prompt: PromptIdentity($0),
-            updatedAt: $0.state == .needsInput ? nil : $0.updatedAt
-        ) }
+    session.map { record in
+        // Parallel tool calls change only the in-flight set; they must not re-pick the line of a waiting prompt.
+        var spoken = record
+        spoken.inFlightToolUseIDs = nil
+        return SpeechKey(
+            sessionID: record.sessionID, state: effectiveState(record, now: now), prompt: PromptIdentity(spoken),
+            updatedAt: record.state == .needsInput ? nil : record.updatedAt
+        )
+    }
 }
 
 public func shouldRepickSpeech(previous: SpeechKey?, current: SpeechKey?, hasLine: Bool) -> Bool {
