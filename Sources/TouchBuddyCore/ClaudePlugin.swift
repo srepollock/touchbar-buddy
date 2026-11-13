@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A local Claude Code marketplace holding one plugin whose only job is to register the TouchBuddy hooks.
@@ -8,12 +9,21 @@ public enum ClaudePlugin {
 
     private static let description = "TouchBuddy: shows Claude Code session status on the Touch Bar"
 
-    public static func files(helperPath: String, version: String) -> [String: Data] {
+    /// Claude Code decides "already up to date" by string equality of the manifest version, so the hooks content hash
+    /// rides along as semver build metadata: changing hooks.json always yields a version `plugin update` will fetch.
+    public static func pluginVersion(base: String, hooksData: Data) -> String {
+        let digest = SHA256.hash(data: hooksData).prefix(4).map { String(format: "%02x", $0) }.joined()
+        return "\(base)+\(digest)"
+    }
+
+    public static func files(helperPath: String, version baseVersion: String) -> [String: Data] {
         let command = HookInstaller.hookCommand(helperPath: helperPath)
         var hooks: [String: Any] = [:]
         for event in HookInstaller.events {
             hooks[event] = [["hooks": [["type": "command", "command": command, "timeout": 5] as [String: Any]]]]
         }
+        let hooksData = encode(["hooks": hooks])
+        let version = pluginVersion(base: baseVersion, hooksData: hooksData)
         let marketplace: [String: Any] = [
             "name": marketplaceName,
             "owner": ["name": "TouchBuddy"],
@@ -31,7 +41,7 @@ public enum ClaudePlugin {
         return [
             ".claude-plugin/marketplace.json": encode(marketplace),
             "\(pluginName)/.claude-plugin/plugin.json": encode(plugin),
-            "\(pluginName)/hooks/hooks.json": encode(["hooks": hooks]),
+            "\(pluginName)/hooks/hooks.json": hooksData,
         ]
     }
 

@@ -34,14 +34,37 @@ import Testing
         #expect(plugins.count == 1)
         #expect(plugins[0]["name"] as? String == "touchbuddy")
         #expect(plugins[0]["source"] as? String == "./touchbuddy")
-        #expect(plugins[0]["version"] as? String == "1.2.3")
+        let version = try #require(plugins[0]["version"] as? String)
+        #expect(version.hasPrefix("1.2.3+"))
+        #expect(version.dropFirst("1.2.3+".count).count == 8)
+        let plugin = try json("touchbuddy/.claude-plugin/plugin.json")
+        #expect(plugin["version"] as? String == version)
     }
 
     @Test func pluginJSONHasNameAndVersion() throws {
         let root = try json("touchbuddy/.claude-plugin/plugin.json", version: "4.5.6")
         #expect(root["name"] as? String == "touchbuddy")
-        #expect(root["version"] as? String == "4.5.6")
+        #expect((root["version"] as? String)?.hasPrefix("4.5.6+") == true)
         #expect(root["description"] as? String != nil)
+    }
+
+    @Test func versionChangesWhenHooksChange() throws {
+        func version(helper: String) throws -> String {
+            let data = try #require(ClaudePlugin.files(helperPath: helper, version: "1.0.0")[".claude-plugin/marketplace.json"])
+            let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let plugins = try #require(root["plugins"] as? [[String: Any]])
+            return try #require(plugins[0]["version"] as? String)
+        }
+        #expect(try version(helper: helper) == version(helper: helper))
+        #expect(try version(helper: helper) != version(helper: "/elsewhere/touchbuddy-hook"))
+    }
+
+    @Test func versionHashMatchesHooksFile() throws {
+        let files = ClaudePlugin.files(helperPath: helper, version: "1.0.0")
+        let hooks = try #require(files["touchbuddy/hooks/hooks.json"])
+        let pluginData = try #require(files["touchbuddy/.claude-plugin/plugin.json"])
+        let plugin = try #require(JSONSerialization.jsonObject(with: pluginData) as? [String: Any])
+        #expect(plugin["version"] as? String == ClaudePlugin.pluginVersion(base: "1.0.0", hooksData: hooks))
     }
 
     @Test func installCommandsQuotePathWithSpaces() {
