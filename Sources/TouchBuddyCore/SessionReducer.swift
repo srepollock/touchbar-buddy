@@ -40,6 +40,9 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
     if payload.hookEventName == "SessionEnd" {
         return .delete(sessionID: payload.sessionID)
     }
+    if let existing, let held = keptNeedsInput(existing: existing, payload: payload) {
+        return .upsert(held)
+    }
     guard var transition = transition(for: payload) else {
         return .unchanged
     }
@@ -97,6 +100,20 @@ public func reduce(existing: SessionRecord?, payload: HookPayload, context: Hook
             inFlightToolUseIDs: inFlightIDs(existing: existing, payload: payload)
         )
     )
+}
+
+/// A prompt awaiting an answer must not be hidden by parallel tool or subagent activity: while its own tool call is
+/// still in flight, tool events for other calls only track the in-flight set. updatedAt stays put so nothing
+/// re-triggers a popup and shown quick replies are not invalidated.
+private func keptNeedsInput(existing: SessionRecord, payload: HookPayload) -> SessionRecord? {
+    guard existing.state == .needsInput, let pending = existing.pendingToolUseID,
+          existing.inFlightToolUseIDs?.contains(pending) == true,
+          ["PreToolUse", "PostToolUse", "PostToolUseFailure"].contains(payload.hookEventName),
+          let toolUseID = payload.toolUseID, toolUseID != pending
+    else { return nil }
+    var kept = existing
+    kept.inFlightToolUseIDs = inFlightIDs(existing: existing, payload: payload)
+    return kept
 }
 
 private func inFlightIDs(existing: SessionRecord?, payload: HookPayload) -> [String]? {

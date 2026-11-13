@@ -450,3 +450,59 @@ private func withIterm(_ record: SessionRecord) -> SessionRecord {
     #expect(failed.inFlightToolUseIDs == nil)
     #expect(quickReplies(for: withIterm(failed)).isEmpty)
 }
+
+private func promptRecord() -> SessionRecord {
+    SessionRecord(
+        sessionID: "s1", cwd: "/Users/x/projects/touchbar-app", projectName: "touchbar-app",
+        state: .needsInput, speechKind: .permission, detail: "rm -rf build", toolName: "Bash",
+        updatedAt: Date(timeIntervalSince1970: 500), startedAt: Date(timeIntervalSince1970: 100),
+        claudePID: 7, itermSessionID: "iterm-old", entrypoint: "cli",
+        pendingToolUseID: "toolu_A", inFlightToolUseIDs: ["toolu_A"]
+    )
+}
+
+@Test func needsInputSurvivesDifferentIdPreAndPost() throws {
+    let pre = try event("PreToolUse", extra: #""tool_name": "Read", "tool_use_id": "toolu_B""#)
+    let afterPre = try upserted(reduce(existing: promptRecord(), payload: pre, context: context))
+    #expect(afterPre.state == .needsInput)
+    #expect(afterPre.speechKind == .permission)
+    #expect(afterPre.detail == "rm -rf build")
+    #expect(afterPre.toolName == "Bash")
+    #expect(afterPre.pendingToolUseID == "toolu_A")
+    #expect(afterPre.updatedAt == promptRecord().updatedAt)
+
+    for name in ["PostToolUse", "PostToolUseFailure"] {
+        let post = try event(name, extra: #""tool_name": "Read", "tool_use_id": "toolu_B""#)
+        let afterPost = try upserted(reduce(existing: afterPre, payload: post, context: context))
+        #expect(afterPost.state == .needsInput)
+        #expect(afterPost.pendingToolUseID == "toolu_A")
+        #expect(afterPost.updatedAt == promptRecord().updatedAt)
+        #expect(afterPost.inFlightToolUseIDs == ["toolu_A"])
+    }
+}
+
+@Test func sameIdPostClearsNeedsInput() throws {
+    for name in ["PostToolUse", "PostToolUseFailure"] {
+        let post = try event(name, extra: #""tool_name": "Bash", "tool_use_id": "toolu_A""#)
+        let record = try upserted(reduce(existing: promptRecord(), payload: post, context: context))
+        #expect(record.state == .working)
+        #expect(record.updatedAt == now)
+        #expect(record.inFlightToolUseIDs == nil)
+    }
+}
+
+@Test func inFlightStillTracked() throws {
+    let pre = try event("PreToolUse", extra: #""tool_name": "Read", "tool_use_id": "toolu_B""#)
+    let afterPre = try upserted(reduce(existing: promptRecord(), payload: pre, context: context))
+    #expect(afterPre.inFlightToolUseIDs == ["toolu_A", "toolu_B"])
+    let post = try event("PostToolUse", extra: #""tool_name": "Read", "tool_use_id": "toolu_B""#)
+    let afterPost = try upserted(reduce(existing: afterPre, payload: post, context: context))
+    #expect(afterPost.inFlightToolUseIDs == ["toolu_A"])
+}
+
+@Test func otherEventsStillLeaveNeedsInputWhileParallelCallInFlight() throws {
+    for name in ["UserPromptSubmit", "Stop"] {
+        let record = try upserted(reduce(existing: promptRecord(), payload: event(name), context: context))
+        #expect(record.state != .needsInput)
+    }
+}
