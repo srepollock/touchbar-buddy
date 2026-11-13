@@ -23,11 +23,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Package.swift needs Swift >= 6.0 (swift-tools-version 6.0, strict concurrency).
-      - name: Select newest Xcode
+      # Uses the runner image's default (stable) Xcode; Package.swift needs Swift >= 6.0.
+      - name: Show toolchain
         run: |
-          xcode="$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
-          sudo xcode-select -s "$xcode"
           xcodebuild -version
           swift --version
 
