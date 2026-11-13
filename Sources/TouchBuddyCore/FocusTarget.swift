@@ -32,32 +32,77 @@ public func isValidITermUUID(_ value: String) -> Bool {
     }
 }
 
+/// Shared session lookup for iTerm scripts. Collections are dereferenced up front (`get`) because lazy
+/// index-based references go stale mid-loop ("item 8 of every tab of item 2 of every window"), and each window
+/// is wrapped in `try` so one odd window cannot abort the search. `body` runs with `w`, `t`, `s` bound to the match
+/// and must end in a `return`.
+func itermSessionLookup(uniqueID: String, body: String) -> String {
+    let indented = body.split(separator: "\n", omittingEmptySubsequences: false)
+        .map { $0.isEmpty ? "" : "                    " + $0 }
+        .joined(separator: "\n")
+    return """
+                repeat with w in (get windows)
+                    try
+                        repeat with t in (get tabs of w)
+                            repeat with s in (get sessions of t)
+                                if unique id of s is "\(uniqueID)" then
+    \(indented)
+                                end if
+                            end repeat
+                        end repeat
+                    end try
+                end repeat
+    """
+}
+
 /// Re-validates `uniqueID` itself; an invalid one yields a script that does nothing.
 public func itermSelectScript(uniqueID: String) -> String {
     guard isValidITermUUID(uniqueID) else { return noOpITermScript }
+    let lookup = itermSessionLookup(uniqueID: uniqueID, body: """
+    set isHotkey to false
+    try
+        set isHotkey to is hotkey window of w
+    end try
+    if isHotkey then reveal hotkey window w
+    try
+        set miniaturized of w to false
+    end try
+    select w
+    select t
+    select s
+    if not isHotkey then activate
+    return "found"
+    """)
     return """
     if application "iTerm2" is running then
-        with timeout of 3 seconds
+        with timeout of 5 seconds
             tell application "iTerm2"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        repeat with s in sessions of t
-                            if unique id of s is "\(uniqueID)" then
-                                set miniaturized of w to false
-                                select w
-                                select t
-                                select s
-                                activate
-                                return "found"
-                            end if
-                        end repeat
-                    end repeat
-                end repeat
+    \(lookup)
             end tell
         end timeout
     end if
     return "missing"
     """
 }
+
+/// Fallback when the session cannot be found: reveals a hotkey window if one exists. Never activates iTerm
+/// and never creates a window or tab.
+public let itermRevealHotkeyScript = """
+if application "iTerm2" is running then
+    with timeout of 5 seconds
+        tell application "iTerm2"
+            repeat with w in (get windows)
+                try
+                    if is hotkey window of w then
+                        reveal hotkey window w
+                        return "revealed"
+                    end if
+                end try
+            end repeat
+        end tell
+    end timeout
+end if
+return "none"
+"""
 
 let noOpITermScript = "return \"missing\""

@@ -12,7 +12,7 @@ final class SessionFocuser {
     func focus(_ r: SessionRecord) {
         switch focusTarget(for: r) {
         case .itermSession(let uniqueID):
-            if !selectITermSession(uniqueID: uniqueID) { activate(Self.itermBundleID) }
+            if !selectITermSession(uniqueID: uniqueID) { revealHotkeyWindowIfAny() }
         case .claudeDesktop:
             activate(Self.claudeDesktopBundleID)
         case .itermApp:
@@ -26,6 +26,12 @@ final class SessionFocuser {
         return found
     }
 
+    /// Never `activate`s iTerm here: with only a hidden hotkey window that makes iTerm open a new window or tab.
+    private func revealHotkeyWindowIfAny() {
+        let result = runAppleScript(itermRevealHotkeyScript)
+        logger.info("session not found; hotkey window fallback result=\(result ?? "error", privacy: .public)")
+    }
+
     private func activate(_ bundleID: String) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
             logger.error("no app for bundle id \(bundleID, privacy: .public)")
@@ -37,7 +43,7 @@ final class SessionFocuser {
     }
 }
 
-/// Runs on the calling thread; the generated scripts carry their own 3 second timeout.
+/// Runs on the calling thread; the generated scripts carry their own 5 second timeout.
 @MainActor
 func runAppleScript(_ source: String) -> String? {
     guard let script = NSAppleScript(source: source) else {

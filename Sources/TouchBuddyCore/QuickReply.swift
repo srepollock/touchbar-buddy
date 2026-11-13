@@ -7,8 +7,11 @@ public enum QuickReply: Equatable, Sendable {
     case choose(index: Int, label: String)
 }
 
-/// Permission prompts whose on-screen layout was verified against live Claude Code (see task-12 report).
-private let verifiedPermissionTools: Set<String> = ["Bash", "Edit"]
+/// Built-in tools whose standard permission dialog takes "1" (Allow) and Esc (Deny); the on-screen footer check
+/// still gates every send. "Always" ("2") is offered for Bash only.
+private let allowDenyPermissionTools: Set<String> = [
+    "Bash", "Edit", "MultiEdit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch",
+]
 
 public func quickReplies(for r: SessionRecord) -> [QuickReply] {
     // Fail closed: the prompt on screen is only known to be the recorded one when exactly one call is in flight.
@@ -18,11 +21,8 @@ public func quickReplies(for r: SessionRecord) -> [QuickReply] {
     else { return [] }
     switch r.speechKind {
     case .permission:
-        switch r.toolName {
-        case "Bash": return [.allow, .allowAlways, .deny]
-        case "Edit": return [.allow, .deny]
-        default: return []
-        }
+        guard let tool = r.toolName, allowDenyPermissionTools.contains(tool) else { return [] }
+        return tool == "Bash" ? [.allow, .allowAlways, .deny] : [.allow, .deny]
     case .question:
         guard let options = r.pendingOptions, !options.isEmpty else { return [] }
         return options.prefix(9).enumerated().map { .choose(index: $0.offset + 1, label: $0.element) }
@@ -92,6 +92,25 @@ public func itermWriteScript(
             ? "(trimmedLine starts with \"\(footer)\")"
             : "(trimmedLine ends with \"\(footer)\")"
     }.joined(separator: " or ")
+    let lookup = itermSessionLookup(uniqueID: uniqueID, body: """
+    tell s to set screenText to contents
+    set screenLines to paragraphs of screenText
+    set promptShown to false
+    set seen to 0
+    repeat with i from (count of screenLines) to 1 by -1
+        set trimmedLine to my trimText(item i of screenLines)
+        if trimmedLine is not "" then
+            set seen to seen + 1
+            if \(condition) then set promptShown to true
+            if seen is greater than or equal to 3 then exit repeat
+        end if
+    end repeat
+    if promptShown then
+        tell s to write text \(literal) newline NO
+        return "sent"
+    end if
+    return "noprompt"
+    """)
     return """
     on trimText(t)
         set ws to {" ", tab, return, linefeed, character id 160}
@@ -107,33 +126,9 @@ public func itermWriteScript(
     end trimText
 
     if application "iTerm2" is running then
-        with timeout of 3 seconds
+        with timeout of 5 seconds
             tell application "iTerm2"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        repeat with s in sessions of t
-                            if unique id of s is "\(uniqueID)" then
-                                tell s to set screenText to contents
-                                set screenLines to paragraphs of screenText
-                                set promptShown to false
-                                set seen to 0
-                                repeat with i from (count of screenLines) to 1 by -1
-                                    set trimmedLine to my trimText(item i of screenLines)
-                                    if trimmedLine is not "" then
-                                        set seen to seen + 1
-                                        if \(condition) then set promptShown to true
-                                        if seen is greater than or equal to 3 then exit repeat
-                                    end if
-                                end repeat
-                                if promptShown then
-                                    tell s to write text \(literal) newline NO
-                                    return "sent"
-                                end if
-                                return "noprompt"
-                            end if
-                        end repeat
-                    end repeat
-                end repeat
+    \(lookup)
             end tell
         end timeout
     end if

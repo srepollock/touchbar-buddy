@@ -58,11 +58,39 @@ private func record(iterm: String? = nil, entrypoint: String? = nil) -> SessionR
     @Test func selectScriptGuardsRunningTimeoutAndDeminiaturizes() {
         let script = itermSelectScript(uniqueID: uuid)
         #expect(script.contains("if application \"iTerm2\" is running then"))
-        #expect(script.contains("with timeout of 3 seconds"))
+        #expect(script.contains("with timeout of 5 seconds"))
         #expect(script.contains("end timeout"))
         #expect(script.contains("set miniaturized of w to false"))
         #expect(script.range(of: "set miniaturized of w to false")!.lowerBound < script.range(of: "select w")!.lowerBound)
         #expect(script.hasSuffix("return \"missing\""))
+    }
+
+    @Test func selectScriptDereferencesCollectionsAndTriesEachWindow() {
+        let script = itermSelectScript(uniqueID: uuid)
+        #expect(script.contains("repeat with w in (get windows)"))
+        #expect(script.contains("repeat with t in (get tabs of w)"))
+        #expect(script.contains("repeat with s in (get sessions of t)"))
+        #expect(script.range(of: "repeat with w in (get windows)")!.upperBound < script.range(of: "try")!.lowerBound)
+        #expect(script.contains("end try"))
+    }
+
+    @Test func selectScriptRevealsHotkeyWindowBeforeSelecting() {
+        let script = itermSelectScript(uniqueID: uuid)
+        #expect(script.contains("is hotkey window of w"))
+        let reveal = script.range(of: "reveal hotkey window w")!.lowerBound
+        #expect(reveal < script.range(of: "select w")!.lowerBound)
+        #expect(reveal < script.range(of: "select s")!.lowerBound)
+        #expect(script.contains("if not isHotkey then activate"))
+    }
+
+    @Test func hotkeyFallbackNeverActivatesOrCreates() {
+        let script = itermRevealHotkeyScript
+        #expect(script.contains("reveal hotkey window w"))
+        #expect(script.contains("with timeout of 5 seconds"))
+        for forbidden in ["activate", "create window", "create tab", "write text", "do shell script"] {
+            #expect(!script.contains(forbidden))
+        }
+        #expect(script.hasSuffix("return \"none\""))
     }
 
     @Test func selectScriptRejectsInvalidUUID() {

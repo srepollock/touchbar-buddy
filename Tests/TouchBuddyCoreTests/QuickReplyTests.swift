@@ -32,8 +32,21 @@ private func record(
         #expect(quickReplies(for: record(tool: "Edit")) == [.allow, .deny])
     }
 
-    @Test func unverifiedToolsGetNoPermissionReplies() {
-        for tool in ["ExitPlanMode", "WebFetch", "mcp__x__y", "Write", nil] {
+    @Test func builtInToolsGetAllowDenyWithoutAlways() {
+        for tool in ["Edit", "MultiEdit", "Write", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"] {
+            #expect(quickReplies(for: record(tool: tool)) == [.allow, .deny], "\(tool)")
+        }
+    }
+
+    @Test func alwaysIsBashOnly() {
+        #expect(quickReplies(for: record(tool: "Bash")).contains(.allowAlways))
+        for tool in ["Edit", "Read", "Write", "WebFetch"] {
+            #expect(!quickReplies(for: record(tool: tool)).contains(.allowAlways))
+        }
+    }
+
+    @Test func excludedToolsGetNoPermissionReplies() {
+        for tool in ["ExitPlanMode", "AskUserQuestion", "Task", "Agent", "mcp__x__y", "mcp__x__Read", nil] {
             #expect(quickReplies(for: record(tool: tool)).isEmpty)
         }
     }
@@ -174,9 +187,18 @@ private func record(
     @Test func writeScriptGuardsRunningAndTimeout() {
         let script = itermWriteScript(uniqueID: uuid, keystrokes: "1")
         #expect(script.contains("if application \"iTerm2\" is running then"))
-        #expect(script.contains("with timeout of 3 seconds"))
+        #expect(script.contains("with timeout of 5 seconds"))
         #expect(script.contains("end timeout"))
         #expect(script.hasSuffix("return \"missing\""))
+    }
+
+    @Test func writeScriptUsesDereferencedTryWrappedLookup() {
+        let script = itermWriteScript(uniqueID: uuid, keystrokes: "1")
+        #expect(script.contains("repeat with w in (get windows)"))
+        #expect(script.contains("repeat with t in (get tabs of w)"))
+        #expect(script.contains("repeat with s in (get sessions of t)"))
+        #expect(script.contains("end try"))
+        #expect(!script.contains("activate"))
     }
 
     @Test func writeScriptRejectsBadInputs() {
