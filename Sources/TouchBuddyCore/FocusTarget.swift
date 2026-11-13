@@ -90,10 +90,14 @@ public func itermSelectScript(uniqueID: String) -> String {
     set isHotkey to false
     try
         set isHotkey to is hotkey window of w
+    on error m number n
+        if n is -1712 or n is -128 then error m number n
     end try
     if isHotkey then reveal hotkey window w
     try
         set miniaturized of w to false
+    on error m number n
+        if n is -1712 or n is -128 then error m number n
     end try
     select w
     select t
@@ -115,6 +119,8 @@ if application "iTerm2" is running then
                         reveal hotkey window w
                         return "revealed"
                     end if
+                on error m number n
+                    if n is -1712 or n is -128 then error m number n
                 end try
             end repeat
         end tell

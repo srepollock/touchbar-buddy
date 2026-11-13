@@ -12,7 +12,7 @@ final class SessionFocuser {
     func focus(_ r: SessionRecord) {
         switch focusTarget(for: r) {
         case .itermSession(let uniqueID):
-            if !selectITermSession(uniqueID: uniqueID) { revealHotkeyWindowIfAny() }
+            focusITermSession(uniqueID: uniqueID)
         case .claudeDesktop:
             activate(Self.claudeDesktopBundleID)
         case .itermApp:
@@ -20,33 +20,38 @@ final class SessionFocuser {
         }
     }
 
-    private func selectITermSession(uniqueID: String) -> Bool {
-        let result = runAppleScript(itermSelectScript(uniqueID: uniqueID))
-        let found = result == "found"
-        if !found {
-            logger.info("iTerm session \(uniqueID, privacy: .public) not found result=\(result ?? "error", privacy: .public)")
+    /// Select the session. When the script reports it missing, reveal a hotkey window, else fall back to the safe
+    /// running-iTerm activation (never a launch). A nil result (error, timeout, Automation denied) skips every fallback.
+    private func focusITermSession(uniqueID: String) {
+        guard let result = runAppleScript(itermSelectScript(uniqueID: uniqueID)) else {
+            logger.info("iTerm session \(uniqueID, privacy: .public) select failed; no fallback")
+            return
         }
-        return found
+        guard result != "found" else { return }
+        logger.info("iTerm session \(uniqueID, privacy: .public) not found result=\(result, privacy: .public)")
+        if !revealHotkeyWindow() { activateRunningITerm() }
     }
 
     /// No session to target: reveal a hotkey window, else bring an already-running iTerm forward. Never launches iTerm
     /// or reopens it (a reopen event spawns a window when only a hidden hotkey window exists).
     private func focusRunningITerm() {
-        revealHotkeyWindowIfAny(then: { revealed in
-            guard !revealed else { return }
-            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.itermBundleID).first else {
-                logger.info("iTerm is not running; nothing to focus")
-                return
-            }
-            app.activate()
-        })
+        if !revealHotkeyWindow() { activateRunningITerm() }
+    }
+
+    private func activateRunningITerm() {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.itermBundleID).first else {
+            logger.info("iTerm is not running; nothing to focus")
+            return
+        }
+        let activated = app.activate()
+        logger.info("iTerm app activate accepted=\(activated, privacy: .public)")
     }
 
     /// Never `activate`s iTerm here: with only a hidden hotkey window that makes iTerm open a new window or tab.
-    private func revealHotkeyWindowIfAny(then: ((Bool) -> Void)? = nil) {
+    private func revealHotkeyWindow() -> Bool {
         let result = runAppleScript(itermRevealHotkeyScript)
-        then?(result == "revealed")
-        logger.info("session not found; hotkey window fallback result=\(result ?? "error", privacy: .public)")
+        logger.info("hotkey window reveal result=\(result ?? "error", privacy: .public)")
+        return result == "revealed"
     }
 
     private func activate(_ bundleID: String) {
@@ -60,7 +65,7 @@ final class SessionFocuser {
     }
 }
 
-/// Runs on the calling thread; each script carries a 5 second timeout, so a hung iTerm can block the main thread for up to 5 s (not per window: timeouts are rethrown, not swallowed).
+/// Runs on the calling thread; each script carries a 5 second timeout, so a hung iTerm can block the main thread for up to 5 s per call (timeouts -1712 and user cancel -128 are rethrown by every `try` block, never swallowed). A select that reports missing plus the hotkey fallback can total up to 10 s.
 @MainActor
 func runAppleScript(_ source: String) -> String? {
     guard let script = NSAppleScript(source: source) else {

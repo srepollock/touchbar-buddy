@@ -102,6 +102,19 @@ private func record(iterm: String? = nil, entrypoint: String? = nil) -> SessionR
         #expect(script.hasSuffix("return \"none\""))
     }
 
+    @Test func everyTryBlockRethrowsTimeoutAndCancel() {
+        for script in [itermSelectScript(uniqueID: uuid), itermRevealHotkeyScript] {
+            let lines = script.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            let tries = lines.filter { $0 == "try" }.count
+            let rethrowLines = lines.filter {
+                $0 == "if n is -1712 or n is -128 then error m number n"
+                    || $0 == "if errNum is -1712 or errNum is -128 then error errMsg number errNum"
+            }.count
+            #expect(tries > 0 && tries == rethrowLines)
+            #expect(lines.filter { $0.hasPrefix("on error") }.count == tries)
+        }
+    }
+
     @Test func selectScriptRejectsInvalidUUID() {
         let script = itermSelectScript(uniqueID: "x\" & do shell script \"y")
         #expect(!script.contains("do shell script"))
