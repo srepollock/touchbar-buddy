@@ -1,0 +1,78 @@
+# Vendored from srepollock/ci-toolkit v1.3.0 (4e4f977), unmodified below this header.
+# ci-toolkit is private and a public repo cannot call its reusable workflows, so this
+# repo keeps its own copy. Called by release.yml; edit here, not upstream.
+# ============================================================================
+# release-please (reusable)
+# ----------------------------------------------------------------------------
+# Ported from stockwatch / meridian-ii / caravan `release.yml`. Opens or updates
+# the release PR on every push to `release_branch`; merging that PR tags the
+# release. Deploys stay in the caller: gate them on this job's outputs.
+#
+#   jobs:
+#     release:
+#       uses: srepollock/ci-toolkit/.github/workflows/release-please.yml@v1
+#       permissions: { contents: write, pull-requests: write }
+#     deploy:
+#       needs: release
+#       if: needs.release.outputs.release_created == 'true'
+#
+# The release PR is opened with GITHUB_TOKEN, so no workflow runs on it and
+# required status checks never report. Don't require checks on the release
+# branch, or gate the caller on `workflow_run` of CI (see README).
+#
+# Caller owns `on:` (push to the release branch) and `concurrency`.
+#
+# Caller job permissions:
+#   contents: write, pull-requests: write
+# ============================================================================
+name: release-please
+
+on:
+  workflow_call:
+    inputs:
+      release_branch:
+        description: "Branch the release PR targets"
+        type: string
+        default: trunk
+      release_type:
+        description: "Empty reads config_file/manifest_file. Setting it (node, python, simple, ...) ignores both."
+        type: string
+        default: ""
+      config_file:
+        description: "release-please config, used when release_type is empty"
+        type: string
+        default: release-please-config.json
+      manifest_file:
+        description: "release-please manifest, used when release_type is empty"
+        type: string
+        default: .release-please-manifest.json
+    outputs:
+      release_created:
+        description: "'true' when this run created a release"
+        value: ${{ jobs.release-please.outputs.release_created }}
+      tag_name:
+        description: "Tag of the created release, e.g. v1.2.0"
+        value: ${{ jobs.release-please.outputs.tag_name }}
+      version:
+        description: "Version of the created release, e.g. 1.2.0"
+        value: ${{ jobs.release-please.outputs.version }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: ${{ inputs.release_branch }}
+          release-type: ${{ inputs.release_type }}
+          config-file: ${{ inputs.config_file }}
+          manifest-file: ${{ inputs.manifest_file }}
