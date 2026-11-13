@@ -17,7 +17,7 @@
 - [x] 12b. Chatty mode (wandering avatar and random updates)
 - [x] 13b. Hooks shipped as a local Claude Code plugin (`touchbuddy@touchbuddy-local`), versioned by hooks.json content hash
 - [x] CI and release adoption: ci.yml, release-please, vendored ci-toolkit v1.3.0 AI/Dependabot workflows, universal release builds
-- [ ] 13. Signing, install, end-to-end verification (owner hardware smoke pending)
+- [x] 13. Signing, install, end-to-end verification
 - [x] Final-review fix wave: needs-input survives parallel tool calls, one popup per prompt, safe iTerm focus fallbacks, bounded AppleScript, speech decay, dead installer code removed
 
 See `docs/superpowers/plans/2026-11-11-touchbuddy.md` for task definitions.
