@@ -5,7 +5,8 @@
 - [x] 2. Session model, hook payload, reducer
 - [x] 3. Session store + `touchbuddy-hook` CLI
 - [x] 4. Session view logic
-- [x] 5. Hook installer for `settings.local.json`
+- [x] 5. Hook installer for `settings.local.json` (superseded by 5b; only the owner-initiated legacy removal remains)
+- [x] 5b. Hooks delivered as a local Claude Code plugin (`touchbuddy@touchbuddy-local`), versioned by hooks.json content hash
 - [x] 6. Speech templates
 - [x] 7. Character format, discovery, frame decoding
 - [x] 8. Built-in original characters
@@ -15,9 +16,17 @@
 - [x] 11. Jump to session
 - [x] 12. Quick replies from the Touch Bar
 - [x] 12b. Fail-closed quick-reply hardening (in-flight tracking, prompt footers)
-- [ ] 13. Signing, install, end-to-end verification
+- [ ] 13. Signing, install, end-to-end verification (owner hardware smoke pending)
+- [x] 13b. Final-review fix wave: needs-input survives parallel tool calls, one popup per prompt, safe iTerm focus fallbacks, bounded AppleScript, speech decay, dead installer code removed
 
 See `docs/superpowers/plans/2026-11-11-touchbuddy.md` for task definitions.
+
+## Known limitations
+- After a keyboard approval the session stays orange until the tool finishes (no hook fires on approval).
+- Quick replies are hidden while more than one tool call is in flight (fail closed).
+- Desktop-app chats are not tracked.
+- tmux / SSH sessions only bring iTerm forward; they cannot be targeted individually.
+- AppleScript runs on the main thread (bounded by 5 s timeouts).
 
 ## Stretch
 - Desktop-app chats

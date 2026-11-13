@@ -16,8 +16,8 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 
 ## Hooks
 
-- Hooks ship as a local Claude Code plugin: on every launch the app writes a marketplace (`touchbuddy-local`) + plugin (`touchbuddy`) to `<TOUCHBUDDY_HOME or ~/Library/Application Support/TouchBuddy>/claude-plugin` (`ClaudePlugin`, idempotent). Claude Code 2.1.323 ignores hooks in `~/.claude/settings.local.json`. The owner installs once via menu "Set up Claude Code plugin…" (`claude plugin marketplace add "<dir>"`, `claude plugin install touchbuddy@touchbuddy-local`). Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, Notification, Stop, SessionEnd. Validate with `claude plugin validate --strict <dir>`.
-- Menu status reads `~/.claude/plugins/installed_plugins.json` (read-only). "Remove old settings.local.json hooks" appears only while legacy hooks remain there (`HookInstaller`, timestamped backup). TouchBuddy never writes `~/.claude`.
+- Hooks ship as a local Claude Code plugin: on every launch the app writes a marketplace (`touchbuddy-local`) + plugin (`touchbuddy`) to `<TOUCHBUDDY_HOME or ~/Library/Application Support/TouchBuddy>/claude-plugin` (`ClaudePlugin`, idempotent). Claude Code 2.1.323 ignores hooks in `~/.claude/settings.local.json`. The owner installs once via menu "Set up Claude Code plugin…" (`claude plugin marketplace add "<dir>"`, `claude plugin install touchbuddy@touchbuddy-local`). After any change to the hooks (events, command), relaunch the app so it rewrites the plugin, then run `claude plugin update touchbuddy@touchbuddy-local` and restart Claude Code sessions. The plugin version is `<CFBundleShortVersionString>+<first 8 hex of SHA-256 of hooks.json>`; Claude Code compares versions by string equality, so the hash makes every hooks change an update. Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, Notification, Stop, SessionEnd. Validate with `claude plugin validate --strict <dir>`.
+- Menu status reads `~/.claude/plugins/installed_plugins.json` (read-only). "Remove old settings.local.json hooks" appears only while legacy hooks remain there (`HookInstaller`, timestamped backup). TouchBuddy never writes `~/.claude`, except the owner-initiated legacy removal of `settings.local.json` hooks.
 - Session lock files open with `O_NOFOLLOW`; a symlinked lock path is refused and the hook proceeds unlocked.
 - Quick replies (Allow/Deny/choices) are offered only when exactly one tool call is in flight; with several, the bubble shows the PermissionRequest's own label but no buttons.
 
@@ -33,7 +33,7 @@ Menu-bar macOS app (Swift 6, SwiftPM) that shows Claude Code session status in t
 
 ## Rules
 
-- Never touch `~/.claude/settings.json` or `settings.local.json`.
+- Never touch `~/.claude/settings.json` or `settings.local.json`, except the owner-initiated legacy hook removal from `settings.local.json` (menu item, with backup).
 - No `print` in shipped code; use `os.Logger` (subsystem `ca.spollock.touchbuddy`).
 - Conventional commits.
 
