@@ -12,9 +12,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/build/TouchBuddy.app"
 IDENTITY="${TOUCHBUDDY_SIGN_IDENTITY:-TouchBuddy Local Signing}"
 
+# Release builds are universal: Touch Bar Macs are mostly Intel, CI runners are arm64.
+# --show-bin-path must get the same flags as the build (multi-arch changes the bin path).
+if [ "$CONFIG" = "release" ]; then
+    BUILD_FLAGS=(-c "$CONFIG" --arch arm64 --arch x86_64)
+else
+    BUILD_FLAGS=(-c "$CONFIG")
+fi
+
 cd "$ROOT"
-swift build -c "$CONFIG"
-BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+swift build "${BUILD_FLAGS[@]}"
+BIN_DIR="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
