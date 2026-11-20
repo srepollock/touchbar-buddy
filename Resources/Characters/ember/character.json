@@ -1,0 +1,36 @@
+{
+  "displayName" : "Ember",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions? Boring. Light something up!",
+      "All clear. Just embers. Ugh.",
+      "Nothing burning. Hurry up and start!"
+    ],
+    "finished" : [
+      "{project} done! Burned right through it.",
+      "Finished {project}. Too easy. Next!",
+      "{project}: complete. That was a scorcher!"
+    ],
+    "idle" : [
+      "{project} is idle. I'm getting restless!",
+      "Nothing in {project}. Give me something to burn.",
+      "{project}: sitting here smouldering..."
+    ],
+    "permission" : [
+      "{project} needs to {detail}. Say yes already!",
+      "Hurry up! {project} wants to {detail}.",
+      "{project}: {detail}. Approve it, I'm burning here!"
+    ],
+    "question" : [
+      "{project} asks: {detail} Answer NOW.",
+      "Hey! {project} needs you. {detail}",
+      "Waiting on you, {project}: {detail} Come on!"
+    ],
+    "working" : [
+      "{project} is on fire! Running {tool}.",
+      "Hot hot hot: {project} is cooking.",
+      "{project}: {tool} blazing. Don't slow me down!"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "displayName" : "Jelly",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions. Just calm water.",
+      "All clear. Let the tide carry you.",
+      "Stillness. Nothing to do."
+    ],
+    "finished" : [
+      "{project} has settled. All is well.",
+      "Gently done: {project} is finished.",
+      "{project}: complete. Breathe out."
+    ],
+    "idle" : [
+      "{project} floats, calm and still.",
+      "Nothing stirs in {project}. Peaceful.",
+      "{project}: drifting, unhurried."
+    ],
+    "permission" : [
+      "Softly... {project} wishes to {detail}.",
+      "{project} drifts near: may it {detail}?",
+      "A gentle ask from {project}: {detail}"
+    ],
+    "question" : [
+      "{project} floats a question: {detail}",
+      "Whenever you're ready, {project}: {detail}",
+      "{project} wonders, softly: {detail}"
+    ],
+    "working" : [
+      "{project} pulses along. Running {tool}.",
+      "Drifting through {project}... {tool}.",
+      "{project}: flowing, flowing. {tool}."
+    ]
+  }
+}

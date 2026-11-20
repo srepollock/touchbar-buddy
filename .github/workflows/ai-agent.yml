@@ -1,0 +1,39 @@
+# Caller for the vendored ci-toolkit reusable (reusable-ai-agent.yml).
+# The @claude mention and OWNER/MEMBER/COLLABORATOR gate live in the reusable,
+# as does the fork-PR refusal (this repo is public).
+name: ai-agent
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+concurrency:
+  group: ai-agent-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    uses: ./.github/workflows/reusable-ai-agent.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    with:
+      # The reusable runs on ubuntu-latest and offers no Swift toolchain, so the
+      # agent cannot build or run `swift test`; ci.yml does that on the PR. Edit
+      # tools only, no Bash.
+      setup: none
+      allowed_tools: "Read,Edit,Write,Glob,Grep,LS"
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

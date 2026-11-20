@@ -22,7 +22,8 @@
 - Data root: `~/Library/Application Support/TouchBuddy/` (`sessions/`, `Characters/`), overridable with env `TOUCHBUDDY_HOME` (tests and the hook helper both honour it).
 - No network access. No `print` in shipped code; use `os.Logger(subsystem: "ca.spollock.touchbuddy", category: …)`.
 - No third-party copyrighted art in the repo. Built-in characters are original.
-- Conventional commits on `trunk`; each task ends with one commit. Update `ROADMAP.md` checkboxes as tasks land.
+- Quick replies type only whitelisted keystrokes into the exact iTerm session, and only after re-validating the session is still in needs input and unchanged.
+- Conventional commits on `trunk`; each task ends with one commit. Update `ROADMAP.md` checkboxes as tasks land (Task 13 adds the new Task 12 "Quick replies" line).
 
 ## Review Focus
 
@@ -454,6 +455,32 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
 
 ---
 
+### Task 8b: Six more built-in characters
+
+This is an owner request added mid-build. It extends Task 8 using the same rules, tools and tests.
+
+**Files:**
+- Create: `Sources/sprite-gen/Sprites+Floppy.swift`, `Sprites+Tape.swift`, `Sprites+Ember.swift`, `Sprites+Mug.swift`, `Sprites+Orbit.swift`, `Sprites+Jelly.swift`
+- Modify: `Sources/sprite-gen/main.swift`, so it registers the new characters
+- Generated and committed: `Resources/Characters/{floppy,tape,ember,mug,orbit,jelly}/...`
+- Modify: `Tests/TouchBuddyCoreTests/BuiltInCharactersTests.swift`, so it expects 10 characters
+
+**Characters (designer's call; must be original):**
+- **Floppy:** a floppy-disk critter whose metal shutter slides while it works. Retro-tech, in Glitch's style. Voice: nostalgic and nerdy.
+- **Tape:** a cassette tape with a face whose reels spin while it works. Retro-tech. Voice: laid-back DJ.
+- **Ember:** a small flame spirit that flickers when idle and flares up when it needs input. Voice: fiery and impatient.
+- **Mug:** a coffee mug that steams while it works. Voice: sleepy and caffeinated.
+- **Orbit:** a tiny ringed planet with a moon circling it. Voice: cosmic and wondrous.
+- **Jelly:** a jellyfish that pulses and drifts. Voice: floaty and serene.
+
+The art rules, frame minimums, speech rules (≥3 lines per kind, `{project}` everywhere except `all_clear`, `{detail}` in permission and question lines, ≤60 chars) and the visual self-inspection are all the same as Task 8. Also move the duplicated `confetti()` helper from the `Sprites+*.swift` files into the shared helper file. That was deferred from the Task 8 review.
+
+- [ ] **Step 1: Update the failing test.** Make `allBuiltinsLoad` expect 10 characters, and include the new ids.
+- [ ] **Step 2: Implement and generate.** Run `swift run sprite-gen Resources/Characters`, then `swift test`. Expected: pass.
+- [ ] **Step 3: Commit.** Use the message `feat(characters): add six more original animated characters`.
+
+---
+
 ### Task 9: App shell: watcher, Control Strip icon, status menu, preferences
 
 **Files:**
@@ -468,7 +495,7 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
   @MainActor final class SessionWatcher { init(store: SessionStore); var onChange: (_ sessions: [SessionRecord], _ triggers: [SessionRecord]) -> Void; func start() }
      // DispatchSource on sessions dir (.write) + 2 s timer; each tick: loadAll -> partitionDead (delete dead files) -> orderedForDisplay -> popupTriggers vs previous -> onChange
   @MainActor final class ControlStripController { static let identifier = "ca.spollock.touchbuddy.strip"; init(onTap: @escaping () -> Void); func update(overall: SessionState?, count: Int) }
-     // NSCustomTouchBarItem; circular status-coloured icon + count badge; needsInput pulses (alpha animation 0.4<->1.0, 0.8 s)
+     // NSCustomTouchBarItem showing the selected character (SpriteView playing character.animation(for: overall ?? .idle), aspect-fit to the strip height) on a status-coloured ring + count badge; needsInput ring pulses (alpha 0.4<->1.0, 0.8 s). init gains `character: CharacterDescriptor`, plus `func setCharacter(_ c: CharacterDescriptor)` called when the menu selection changes. SpriteView is created here in Task 9 (Task 10 reuses it).
   ```
   Menu items: Character ▸ (radio list from `discoverCharacters`), Speak lines aloud (checkbox, TTS), Popup duration ▸ (4 / 8 / 15 s), Install Claude Code hooks, Uninstall Claude Code hooks (show only the applicable one using `isInstalled`), Open Characters Folder (creates the user dir), Launch at Login (checkbox via `SMAppService.mainApp`), Quit. The menu-bar icon mirrors the overall state colour. Install errors (`invalidJSON`) show an `NSAlert` naming the file.
 
@@ -494,8 +521,8 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
 ### Task 10: Dashboard, auto-popup, speech, TTS
 
 **Files:**
-- Create: `Sources/TouchBuddy/DashboardController.swift`, `SpriteView.swift`, `MarqueeLabel.swift`, `Speaker.swift`
-- Modify: `Sources/TouchBuddy/AppDelegate.swift`
+- Create: `Sources/TouchBuddy/DashboardController.swift`, `MarqueeLabel.swift`, `Speaker.swift`
+- Modify: `Sources/TouchBuddy/AppDelegate.swift` (`SpriteView.swift` already exists from Task 9; reuse it)
 
 **Interfaces:**
 - Consumes: `CharacterDescriptor`, `loadFrames`, `speechLine`, `chipTitle`, `effectiveState`, `Preferences`, `TBPPresentSystemModal`/`TBPMinimizeSystemModal`, `ControlStripController.identifier`.
@@ -539,6 +566,11 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
 - Create: `Sources/TouchBuddy/SessionFocuser.swift`, `Sources/TouchBuddyCore/FocusTarget.swift`
 - Test: `Tests/TouchBuddyCoreTests/FocusTargetTests.swift`
 - Modify: `Sources/TouchBuddy/AppDelegate.swift` (`onChipTap` → focuser, then dismiss the dashboard)
+- Modify: `Sources/TouchBuddy/DashboardController.swift`. Owner request: a **tap** on the speech bubble focuses the focus session, exactly like its chip. A drag still scrolls, and taps don't fire during or right after a scroll. Plain NSView `mouseDown` is NOT delivered by the Touch Bar (learned in Task 10). Use an `NSClickGestureRecognizer` with `allowedTouchTypes = .direct` on the bubble scroll view, or an equivalent that the Touch Bar actually delivers, so it doesn't swallow scrolling. The chip and bubble swipe behaviour must not regress; the owner confirmed both on hardware.
+- Create: `Resources/TouchBuddy.entitlements` (`com.apple.security.automation.apple-events` = true)
+- Modify: `scripts/build-app.sh`:
+  - sign `Contents/MacOS/touchbuddy-hook` explicitly first, then the bundle with `--options runtime --entitlements Resources/TouchBuddy.entitlements`, and drop `--deep`. (Controller ruling from the Task 1 review: hardened runtime blocks Apple Events without this entitlement.)
+  - capture the `security find-identity` output into a variable before grepping, which avoids a SIGPIPE false-negative under pipefail.
 
 **Interfaces:**
 - Produces:
@@ -564,7 +596,168 @@ Each `character.json` has a `displayName`, `fps: 8`, and `speech` with ≥ 3 lin
 
 ---
 
-### Task 12: Signing, install, end-to-end verification
+### Task 12: Quick replies from the Touch Bar
+
+Owner request added mid-build. See the spec section "Quick replies from the Touch Bar".
+
+**Files:**
+- Modify: `Sources/TouchBuddyCore/SessionModel.swift`, `HookPayload.swift`, `SessionReducer.swift` (record `AskUserQuestion` options)
+- Create: `Sources/TouchBuddyCore/QuickReply.swift`, `Sources/TouchBuddy/ReplySender.swift`
+- Modify: `Sources/TouchBuddy/DashboardController.swift` (reply buttons), `Sources/TouchBuddy/AppDelegate.swift`
+- Test: `Tests/TouchBuddyCoreTests/QuickReplyTests.swift`, `Tests/TouchBuddyCoreTests/SessionReducerTests.swift`
+
+**Interfaces:**
+- Consumes: `SessionRecord`, `SessionStore.load(sessionID:)`, `itermUniqueID(from:)` (Task 11), `DashboardController`.
+- Produces:
+  ```swift
+  // SessionRecord gains two optional fields; session files without them still decode:
+  public var pendingQuestion: String?; public var pendingOptions: [String]?
+  // ToolInputSummary gains (lenient decode, like its other fields):
+  public let questions: [QuestionSummary]?
+  public struct QuestionSummary: Decodable, Sendable { public let question: String?; public let multiSelect: Bool?; public let options: [String]? }  // options = labels from [{label, description}]
+  public enum QuickReply: Equatable, Sendable { case allow, allowAlways, deny, choose(index: Int, label: String) }   // index is 1-based
+  public func quickReplies(for r: SessionRecord) -> [QuickReply]
+     // [] unless state == .needsInput AND itermUniqueID(from: r.itermSessionID) != nil
+     // speechKind .permission -> [.allow, .allowAlways, .deny]
+     // speechKind .question with pendingOptions non-empty -> choose(1...n, label)
+  public func keystrokes(for reply: QuickReply) -> String
+     // whitelist: allow "1", allowAlways "2", deny "\u{1B}" (Esc), choose(i) -> "\(i)"; i outside 1...9 -> ""
+     // PROVISIONAL: confirm or correct in Step 5
+  public func isReplyStillValid(shownFor: SessionRecord, current: SessionRecord?) -> Bool
+     // current != nil, current.state == .needsInput, current.updatedAt == shownFor.updatedAt
+  public func itermWriteScript(uniqueID: String, keystrokes: String) -> String
+     // AppleScript: find the session by unique id, then `tell s to write text <k> newline NO`
+     // Esc is emitted as (character id 27), never as a raw literal; the script embeds only the UUID and the whitelisted keystrokes
+  @MainActor final class ReplySender { func send(_ reply: QuickReply, shownFor: SessionRecord) -> Bool }
+     // re-load from the store; if !isReplyStillValid -> return false (nothing sent); else run the script; true on success
+  ```
+  Reducer changes:
+  - `PreToolUse` `AskUserQuestion` with exactly one question, where `multiSelect != true` → set `pendingQuestion` and `pendingOptions` (labels).
+  - Any update whose resulting state isn't `.needsInput` clears both fields.
+  - Permission notifications leave them nil.
+
+  Dashboard changes (owner request: permission replies are a **green ✓** (#7ED321 tint, SF Symbol `checkmark`) for Allow and a **red ✗** (#E5484D tint, SF Symbol `xmark`) for Deny, with a smaller secondary "Always" button. A two-option `AskUserQuestion` whose labels read as yes/no uses the same ✓/✗. Add pure `isYesNo(_ options: [String]) -> Bool` in Core with tests):
+  - When `quickReplies(for: focus)` is non-empty, show one button per reply between the bubble and the chips: "Allow", "Always", "Deny", or the option label run through `chipTitle(_, maxChars: 14)`.
+  - The bubble shrinks to fit.
+  - On tap, call `ReplySender.send`. If it returns `true`, dismiss the dashboard. If `false`, grey out all reply buttons and leave the dashboard open.
+  - The buttons also grey out on any live update that changes the focus session's `updatedAt` or state.
+
+- [ ] **Step 1: Write failing tests:**
+  - `QuickReplyTests`:
+    - `permissionGivesAllowAlwaysDeny`.
+    - `questionGivesNumberedChoices`.
+    - `noRepliesWhenNotNeedsInput`.
+    - `noRepliesWithoutValidItermID`.
+    - `keystrokeWhitelist`: allow "1", allowAlways "2", deny "\u{1B}", choose(3) "3", choose(12) "".
+    - `staleWhenUpdatedAtChanged`, `staleWhenStateChanged`, `staleWhenSessionGone`, `validWhenUnchanged`.
+    - `writeScriptEmbedsOnlyUUIDAndKeys`: no `do shell script`, and contains `newline NO`.
+  - `SessionReducerTests`:
+    - `askUserQuestionRecordsOptions`.
+    - `multiSelectQuestionRecordsNoOptions`.
+    - `multipleQuestionsRecordNoOptions`.
+    - `leavingNeedsInputClearsOptions`.
+    - `oldSessionFileWithoutNewFieldsDecodes`.
+- [ ] **Step 2–4: Run (expect FAIL) → implement → run (expect pass).**
+- [ ] **Step 5: Verify keystrokes against live Claude Code.** In an iTerm tab, run `claude` in a scratch dir and trigger:
+  - (a) a Bash permission prompt;
+  - (b) an Edit permission prompt;
+  - (c) an `AskUserQuestion` with 3 options.
+
+  For each, send each candidate keystroke from a second tab via `osascript` using `itermWriteScript`, and record what Claude Code did. Update `keystrokes(for:)` and its test to match what was observed. If "Always allow" isn't option 2 in every prompt tested, remove `.allowAlways` from `quickReplies`, and note it in the report so the controller can tell the owner. Record the observed prompt layouts in the report.
+- [ ] **Step 6: Build and run, then check on the Touch Bar.** Run `swift test && scripts/build-app.sh debug && open build/TouchBuddy.app`. With the controller and owner, on a live permission prompt:
+  - tapping Allow approves it and the dashboard closes;
+  - answering at the keyboard first greys out the buttons, and a later tap sends nothing.
+- [ ] **Step 7: Commit** `feat(app): reply to permission prompts and questions from the Touch Bar`
+
+---
+
+### Task 12b: Chatty mode (wandering avatar and random updates)
+
+This is an owner request added mid-build. See the spec section "Chatty mode".
+
+**Files:**
+- Create: `Sources/TouchBuddyCore/ChattyMode.swift`, `Tests/TouchBuddyCoreTests/ChattyModeTests.swift`
+- Create: `Sources/TouchBuddy/AmbientScheduler.swift`
+- Modify: `Sources/TouchBuddy/DashboardController.swift`, `SpriteView.swift`, `Preferences.swift`, `StatusMenu.swift`, `AppDelegate.swift`
+
+**Interfaces:**
+- Produces (Core, pure):
+  ```swift
+  public enum ChattyInterval: Int, CaseIterable, Sendable { case five = 5, fifteen = 15, thirty = 30 }
+  public func nextAmbientDelay(interval: ChattyInterval, random: Double) -> TimeInterval
+     // minutes*60 * (0.7 + 0.6*random), where random is in 0..<1
+  public func ambientCandidate(sessions: [SessionRecord], now: Date, dashboardOpen: Bool, pick: ([SessionRecord]) -> SessionRecord?) -> SessionRecord?
+     // nil if dashboardOpen, or if any effective needsInput, or if there are no effective .working sessions; else pick among the working ones
+  public func strollPosition(elapsed: TimeInterval, duration: TimeInterval, laneWidth: CGFloat, spriteWidth: CGFloat) -> (x: CGFloat, facingLeft: Bool)
+     // goes there and back across the lane; facingLeft on the return leg; clamped to 0...laneWidth-spriteWidth
+  ```
+- App:
+  - `Preferences` gains `chattyEnabled: Bool` (default **true**) and `chattyInterval: ChattyInterval` (default `.fifteen`). The menu gets a "Chatty mode" checkbox and an interval submenu.
+  - `AmbientScheduler` (@MainActor) runs a one-shot Timer rescheduled with `nextAmbientDelay`. On fire it asks `ambientCandidate`, and if non-nil calls `DashboardController.showAmbient(session:)`.
+  - `DashboardController.showAmbient(session:)`: a 6 s auto-dismiss stroll layout. The avatar slot widens to the lane; the SpriteView x comes from `strollPosition` on a display-rate timer, mirrored via a layer transform when facingLeft. The bubble follows the sprite. TTS stays off. It reuses pin-on-interaction.
+  - Avatar tap changes: in every dashboard it plays the `finished` animation once (then returns to the state animation) and shows a fresh `speechLine` about a random active session (prefer working, then needs input). It does NOT dismiss; ✕ dismisses. The avatar's TapButton accessibility label becomes "Talk to TouchBuddy".
+  - Idle pacing: while the dashboard is open and no line changed in the last 4 s, the avatar paces ±8 pt within its slot.
+
+**Owner constraints:**
+- Bubble swipe, bubble tap → open chat, chip swipe and chip taps must not regress.
+- Quick-reply buttons and their safety rules from Task 12 must not regress.
+- A needs-input trigger always replaces an ambient stroll, and is never blocked by one.
+
+- [ ] **Step 1: Write the failing Core tests:**
+  - `delayWithinJitterBounds` (random 0 → 0.7×, random 0.999 → about 1.3×);
+  - `noCandidateWhenDashboardOpen`, `noCandidateWhenAnyNeedsInput`, `noCandidateWhenNothingWorking`, `picksAmongWorkingOnly`;
+  - `strollGoesThereAndBack`, `strollClampsToLane`, `strollFacesLeftOnReturn`.
+- [ ] **Step 2: Run the tests, expecting them to fail; implement; run again, expecting them to pass.**
+- [ ] **Step 3: Implement the app wiring.** Build, then relaunch the app. To verify through the logs, temporarily set `TOUCHBUDDY_CHATTY_SECONDS` (an env override of the interval, in seconds; it is allowed to stay in, documented in CLAUDE.md) to 20, and mark demo-a as working. Expect an ambient pop-up within 14–26 s. A needs-input notification sent during the stroll replaces it.
+- [ ] **Step 4: Commit.** Use the message `feat(app): chatty mode with wandering avatar and random updates`.
+
+---
+
+### Task 13b: Ship hooks as a local Claude Code plugin
+
+Owner decision after the live test failed: `~/.claude/settings.local.json` hooks never load in Claude Code 2.1.323. See the spec section "Hook installation (revised 2026-11-13)".
+
+**Files:**
+- Create: `Sources/TouchBuddyCore/ClaudePlugin.swift`, `Tests/TouchBuddyCoreTests/ClaudePluginTests.swift`
+- Modify: `Sources/TouchBuddy/StatusMenu.swift`, `Sources/TouchBuddy/AppDelegate.swift`, `CLAUDE.md`
+
+**Interfaces:**
+```swift
+public enum ClaudePlugin {
+  public static let marketplaceName = "touchbuddy-local"
+  public static let pluginName = "touchbuddy"
+  public static func files(helperPath: String, version: String) -> [String: Data]
+     // relative path -> contents, for: ".claude-plugin/marketplace.json", "touchbuddy/.claude-plugin/plugin.json", "touchbuddy/hooks/hooks.json"
+     // hooks.json: {"hooks": {<event>: [{"hooks": [{"type":"command","command": HookInstaller.hookCommand(helperPath:), "timeout": 5}]}]}} for every event in HookInstaller.events
+  public static func write(to dir: URL, helperPath: String, version: String) throws   // atomic per file; only rewrites changed files; dir 0700
+  public static func installCommands(pluginDir: URL) -> [String]                       // ["claude plugin marketplace add \"<dir>\"", "claude plugin install touchbuddy@touchbuddy-local"] with the path shell-quoted
+  public static func isInstalled(installedPluginsJSON: Data?) -> Bool                  // tolerant parse; true if any key/entry names "touchbuddy@touchbuddy-local"
+}
+```
+Look up the exact `marketplace.json`, `plugin.json` and `hooks.json` schema Claude Code 2.1.323 expects. Use the Claude Code plugin docs you know, and confirm against `claude plugin validate <dir>` or `claude plugin details` if a read-only validation command exists. Do NOT run `marketplace add` or `install`; the owner runs those.
+
+The Claude Code installed-plugins record is usually `~/.claude/plugins/installed_plugins.json`. Confirm its location and shape from the CLI's help or docs if you can. Reading it is fine; never write anywhere under `~/.claude`.
+
+- [ ] **Step 1: Write failing tests.**
+  - `hooksJSONRegistersEveryEventWithGuardedCommand`
+  - `marketplaceListsTouchbuddyPluginWithRelativeSource`
+  - `pluginJSONHasNameAndVersion`
+  - `installCommandsQuotePathWithSpaces` (the path contains "Application Support")
+  - `writeIsIdempotentAndDoesNotTouchUnchangedFiles`
+  - `isInstalledToleratesMissingOrGarbage`
+- [ ] **Step 2: Run the tests and see them fail, implement, then run them and see them pass.**
+- [ ] **Step 3: Wire it into the app.**
+  - On launch, the app writes the plugin to `TouchBuddyPaths.root/claude-plugin` (honours `TOUCHBUDDY_HOME`).
+  - The menu changes as follows:
+    - "Set up Claude Code plugin…" opens an NSAlert with the two commands and a "Copy commands" button.
+    - The status line reads "Claude Code plugin: installed ✓" or "not installed".
+    - "Remove old settings.local.json hooks" is shown only while legacy hooks exist there.
+    - The old "Install/Update/Uninstall Claude Code hooks" items are removed. HookInstaller stays for the legacy cleanup.
+- [ ] **Step 4: Validate and commit.** If a read-only CLI validation command exists, run it against the generated dir. Run `swift build && swift test`. Commit as `feat(app): install hooks as a local Claude Code plugin`.
+
+---
+
+### Task 13: Signing, install, end-to-end verification
 
 **Files:**
 - Create: `scripts/make-signing-identity.sh`

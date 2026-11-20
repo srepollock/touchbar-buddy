@@ -41,13 +41,13 @@ Success: the owner never has to cycle through terminal tabs to find the session 
 - Breaking, hiding, or replacing the owner's existing Touch Bar controls when the dashboard is not open.
 - Clobbering or reordering the owner's existing Claude Code hooks.
 - Slowing Claude Code down: hook invocations must be near-instant, never block, and always exit 0, even if TouchBuddy isn't running.
-- Popping up for anything that isn't "needs input" (no popups for "finished", tool calls, etc.).
+- Popping up for anything that isn't "needs input" (no popups for "finished", tool calls, etc.), **except** the opt-out Chatty mode ambient pop-ups described below.
 - Ghost sessions that linger forever after a terminal is closed.
 
 ## User-facing behaviour (decided with the owner)
 
 ### Resting state
-The Touch Bar looks exactly like today. One TouchBuddy icon sits in the Control Strip. Its colour reflects the most urgent session state:
+The Touch Bar looks exactly like today. One TouchBuddy item sits in the Control Strip, showing the **selected avatar** (animated, in its idle/working/etc. animation for the most urgent state) on a status-coloured ring. The ring colour reflects the most urgent session state (owner request, 2026-11-11):
 
 | State | Colour | Meaning |
 |---|---|---|
@@ -64,8 +64,38 @@ When any session **transitions into** needs-input, TouchBuddy presents its dashb
 ### Manual open
 Tapping the Control Strip icon opens the same dashboard with all sessions. ✕ closes it and restores the normal bar.
 
+### Tapping the speech bubble (owner request, 2026-11-11)
+Tapping the speech bubble opens the conversation it refers to (the focus session), exactly like tapping that session's chip. Swiping the bubble still scrolls it; only a tap without a drag opens the chat.
+
+### Chatty mode: wandering avatar and random updates (owner request, 2026-11-11, in v1)
+The owner asked for the avatar to roam the Touch Bar and occasionally tell them what a session is doing. This deliberately relaxes the "only pop up for needs input" rule, behind a setting.
+- **Setting:** "Chatty mode" toggle in the menu, **on** by default (the owner asked for it), with an interval of 5, 15 or 30 minutes (default 15). Each interval gets ±30% random jitter.
+- **Ambient pop-up:** when the interval elapses and at least one session is **working**, pick one working session at random. Show a stroll dashboard for 6 s.
+  - The avatar walks across the app region (left to right, flipped when heading left) in its working animation, with the speech bubble trailing it.
+  - The line comes from the character's existing `working` templates, for example "infra-repo: on it with Bash!".
+  - Skip the pop-up if the dashboard is already open, if a session needs input (the needs-input pop-up always wins), or if nothing is working.
+  - Ambient pop-ups never speak aloud, even with TTS on.
+- **Interactive avatar:** tapping the avatar, in any dashboard, makes it hop (its `finished` animation, once) and say a fresh line about a random active session. **It no longer closes the dashboard; ✕ does.** Tapping the bubble still opens that session's chat.
+- **Idle wander:** while any dashboard is open and the avatar isn't talking, it paces back and forth within its own slot.
+- **Interaction:** touching an ambient pop-up pins it, the same as any dashboard.
+
 ### Session chips
 One chip per session: status dot + project name (basename of the session's cwd), sorted most-urgent first. If they don't fit, the chip area scrolls horizontally. **Tapping a chip focuses that session's iTerm tab** (or activates Claude.app if the session came from the desktop app's Code tab).
+
+### Quick replies from the Touch Bar (owner request, 2026-11-11, in v1)
+When the focused session needs input, the dashboard shows reply buttons next to the speech bubble:
+- **Permission prompt:** a **green ✓** (Allow) and a **red ✗** (Deny), plus a smaller, secondary **Always** button for Claude Code's "Yes, and don't ask again…" option (owner request, 2026-11-11).
+- **Multiple-choice question** (`AskUserQuestion`): when there are exactly two options and they read as yes/no (case-insensitive "yes"/"no", or labels starting with those words), they are shown as the same green ✓ / red ✗. Otherwise there is one button per option label, for a single question with single-select only. Multi-question or multi-select prompts show no reply buttons; the chip opens the tab instead.
+- **Free-text replies are not supported** on the Touch Bar. Tapping the chip opens the tab so the owner can type.
+
+How a reply is sent: TouchBuddy types the matching keystroke into that exact iTerm session via AppleScript `write text … newline NO`, without bringing the tab to the front. Safety rules:
+- Buttons appear only while that session is in needs input, and only when it has a valid iTerm session id. Desktop-app sessions have no reply buttons.
+- Right before sending, TouchBuddy re-reads the session file. If the state is no longer needs input, or the record changed since the buttons were shown (because the owner already answered at the keyboard, for example), nothing is sent and the buttons grey out.
+- Only keystrokes from a fixed whitelist are ever sent. Nothing derived from hook payloads is typed.
+
+The exact keystroke for each option is verified against a live Claude Code prompt during the build. If "Always allow" can't be mapped reliably across tools, it's dropped and the owner is told.
+
+Rejected alternative: answering via Claude Code's `PermissionRequest` hook. It would make Claude Code wait on TouchBuddy before showing the prompt, which breaks the "never slow Claude Code down" anti-goal.
 
 ### Speech
 - Facts first, with character flair. Example: `Psst — touchbar-app wants to run bun test. Your call 👀`
@@ -73,7 +103,7 @@ One chip per session: status dot + project name (basename of the session's cwd),
 - **TTS toggle, off by default.** When on, the line is spoken with macOS speech synthesis on popup.
 
 ### Avatars
-- Ship **4 original, fully animated characters**, each with a looping animation per state (needs input, working, finished, idle). Default is an original Claude-inspired mascot (warm orange, pixel-art style). Concepts for the other three are the builder's call, but they must be original designs (not lookalikes of existing franchises) and visually distinct from each other.
+- Ship **10 original, fully animated characters** (4 initially, plus 6 added at the owner's request on 2026-11-11), each with a looping animation per state (needs input, working, finished, idle). Default is an original Claude-inspired mascot (warm orange, pixel-art style). All must be original designs (not lookalikes of existing franchises) and visually distinct from each other. The owner's favourite is Glitch, so some of the new six share its retro-tech pixel style.
 - Users can add custom characters by dropping a folder into `~/Library/Application Support/TouchBuddy/Characters/`. Custom characters appear in the picker alongside built-ins.
 - Each character has its own speech templates (personality). A custom character without templates falls back to the default character's lines.
 
@@ -93,7 +123,7 @@ Event → state mapping:
 |---|---|---|
 | `SessionStart` | idle | record cwd, iTerm session id, PID |
 | `UserPromptSubmit` | working | |
-| `PreToolUse` | working, except `AskUserQuestion` → **needs input** | record tool name / short summary for speech |
+| `PreToolUse` | working, except `AskUserQuestion` → **needs input** | record tool name / short summary for speech; for `AskUserQuestion`, record the question and option labels for quick replies |
 | `PostToolUse` | working | |
 | `Notification` (permission prompt / elicitation) | **needs input** | use the notification message text in speech |
 | `Notification` (idle reminder) | no state change | must not trigger a popup |
@@ -104,8 +134,12 @@ Finished decays to idle after a quiet period (builder's call, e.g. 10 min).
 
 The helper also records `ITERM_SESSION_ID` and the parent Claude PID. The app prunes sessions whose PID is gone (no ghost sessions).
 
-### Hook installation
-"Install hooks" in the menu merges TouchBuddy's entries into **`~/.claude/settings.local.json`** (owner's decision: `settings.json` is dotfile-synced and must not be touched). Create the file if missing; back it up first if present; append to existing per-event arrays (never replace); idempotent (re-running doesn't duplicate); "Uninstall hooks" removes only TouchBuddy's entries. If `settings.local.json` is a symlink, write through to its target rather than replacing the link. TouchBuddy entries are identified by their command path so uninstall can find them.
+### Hook installation (revised 2026-11-13 — owner decision: Claude Code plugin)
+The live test proved `~/.claude/settings.local.json` is **not** a user-scope settings source in Claude Code (2.1.323): only `~/.claude/settings.json` and project `.claude/` files load, so hooks there never fire. The owner chose to ship the hooks as a **local Claude Code plugin**:
+- TouchBuddy writes a local marketplace + plugin to `~/Library/Application Support/TouchBuddy/claude-plugin/` on every launch (idempotent, atomic): `.claude-plugin/marketplace.json` (marketplace name `touchbuddy-local`), `touchbuddy/.claude-plugin/plugin.json` (plugin `touchbuddy`, version = app version), `touchbuddy/hooks/hooks.json` registering every TouchBuddy event with the same guarded command (`[ -x '<helper>' ] && '<helper>'; exit 0`), so a machine without the app is a silent no-op.
+- The owner installs it once with `claude plugin marketplace add "<that dir>"` and `claude plugin install touchbuddy@touchbuddy-local`. Enabling the plugin adds an `enabledPlugins` entry to `~/.claude/settings.json` (accepted by the owner); TouchBuddy itself never writes `~/.claude/settings.json`.
+- The menu replaces "Install Claude Code hooks" with **"Set up Claude Code plugin…"**: a dialog showing those two commands with a Copy button. It shows "Claude Code plugin: installed ✓" when Claude Code's installed-plugins record lists `touchbuddy@touchbuddy-local`.
+- Legacy: if `~/.claude/settings.local.json` still contains TouchBuddy hooks from the first install, the menu offers **"Remove old settings.local.json hooks"** (existing uninstall path, backup first).
 
 ### Jumping to a session
 Use AppleScript against iTerm2 to select the session whose unique id matches the recorded `ITERM_SESSION_ID`. Falls back to just activating iTerm if not found. Requires the macOS Automation permission for iTerm, requested on first use.

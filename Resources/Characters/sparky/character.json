@@ -1,0 +1,36 @@
+{
+  "displayName" : "Sparky",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "All clear! Nothing needs you ✨",
+      "No sessions — go enjoy a break!",
+      "Quiet day. You're doing great!"
+    ],
+    "finished" : [
+      "{project} is done! Great work! 🎉",
+      "All wrapped up in {project} ✨",
+      "Ta-da! {project} finished!"
+    ],
+    "idle" : [
+      "{project} is ready when you are!",
+      "Standing by on {project} 🙂",
+      "{project}: all quiet, let's go!"
+    ],
+    "permission" : [
+      "Psst — {project} wants to {detail}. Your call! 👀",
+      "{project}: okay to {detail}? You've got this!",
+      "Quick yes/no from you: {detail} in {project}?"
+    ],
+    "question" : [
+      "{project} has a question: {detail} 🤔",
+      "Help me out? {project} asks: {detail}",
+      "Your input please! {project}: {detail}"
+    ],
+    "working" : [
+      "{project}: on it with {tool}! ⚡",
+      "{project} is humming along — nice!",
+      "Busy bee in {project}, hang tight!"
+    ]
+  }
+}

@@ -1,4 +1,40 @@
+# Agent / tooling scratch (session logs, reviews, briefs)
 .superpowers/
+
+# SwiftPM / Xcode build output
 .build/
+build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# Built bundles
 *.app
+*.dSYM/
+
+# Signing material — never commit keys or certificates
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+
+# Local configuration and secrets
+.env
+.env.*
+.claude/settings.local.json
+
+# Editors / OS
 .DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and generated previews
+*.log
+sheets*/

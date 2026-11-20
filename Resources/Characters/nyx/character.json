@@ -1,0 +1,36 @@
+{
+  "displayName" : "Nyx",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "The night is clear. No sessions 🌙",
+      "Silence falls. Nothing calls to you.",
+      "The lantern burns, alone."
+    ],
+    "finished" : [
+      "It is done! {project} is complete! 🌙",
+      "{project} triumphs! Sing, moonlight!",
+      "The deed is finished: {project} ✨"
+    ],
+    "idle" : [
+      "{project} sleeps beneath the moon 🌙",
+      "{project}: silence... too silent.",
+      "My lantern waits on {project}."
+    ],
+    "permission" : [
+      "{project} begs your blessing: {detail}!",
+      "Shall {project} proceed? {detail}",
+      "The fate of {project} hangs: {detail}!"
+    ],
+    "question" : [
+      "{project} cries out: {detail}?!",
+      "A question stirs in {project}: {detail}",
+      "{project} demands an answer: {detail}"
+    ],
+    "working" : [
+      "{project}: the plot thickens... 🌙",
+      "Behold, {project} toils in the dark 🕯️",
+      "{project}: I tend the flame with {tool}!"
+    ]
+  }
+}

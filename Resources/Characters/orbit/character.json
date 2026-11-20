@@ -1,0 +1,36 @@
+{
+  "displayName" : "Orbit",
+  "fps" : 8,
+  "speech" : {
+    "all_clear" : [
+      "No sessions. Just endless sky.",
+      "All clear across the cosmos.",
+      "The void is calm. Nothing awaits."
+    ],
+    "finished" : [
+      "{project} has landed. Wondrous!",
+      "A new star is born: {project} is done.",
+      "{project}: complete. The universe approves."
+    ],
+    "idle" : [
+      "{project} drifts, calm among the stars.",
+      "All is quiet in {project}'s orbit.",
+      "{project}: idle. Gazing at the void."
+    ],
+    "permission" : [
+      "{project} reaches for the cosmos: {detail}",
+      "The stars ask: may {project} {detail}?",
+      "{project} awaits your blessing to {detail}."
+    ],
+    "question" : [
+      "A question drifts from {project}: {detail}",
+      "{project} wonders aloud: {detail}",
+      "Ponder this, traveller. {project}: {detail}"
+    ],
+    "working" : [
+      "{project} orbits onward. Running {tool}.",
+      "Worlds turn within {project}...",
+      "{project}: {tool} spins through the void."
+    ]
+  }
+}
